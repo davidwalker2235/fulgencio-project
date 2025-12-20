@@ -1,173 +1,166 @@
 # ===========================================
-# Python (Backend)
+# Python (Backend) - Solo en back/
 # ===========================================
 
 # Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# C extensions
-*.so
+back/__pycache__/
+back/**/*.py[cod]
+back/**/*$py.class
+back/**/*.so
 
 # Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+back/.Python
+back/build/
+back/develop-eggs/
+back/dist/
+back/downloads/
+back/eggs/
+back/.eggs/
+back/lib/
+back/lib64/
+back/parts/
+back/sdist/
+back/var/
+back/wheels/
+back/pip-wheel-metadata/
+back/share/python-wheels/
+back/**/*.egg-info/
+back/.installed.cfg
+back/**/*.egg
+back/MANIFEST
 
 # PyInstaller
-*.manifest
-*.spec
+back/**/*.manifest
+back/**/*.spec
 
 # Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+back/pip-log.txt
+back/pip-delete-this-directory.txt
 
 # Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
+back/htmlcov/
+back/.tox/
+back/.nox/
+back/.coverage
+back/.coverage.*
+back/.cache
+back/nosetests.xml
+back/coverage.xml
+back/**/*.cover
+back/**/*.py,cover
+back/.hypothesis/
+back/.pytest_cache/
 
 # Translations
-*.mo
-*.pot
+back/**/*.mo
+back/**/*.pot
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+# Django stuff
+back/**/*.log
+back/local_settings.py
+back/db.sqlite3
+back/db.sqlite3-journal
 
-# Flask stuff:
-instance/
-.webassets-cache
+# Flask stuff
+back/instance/
+back/.webassets-cache
 
-# Scrapy stuff:
-.scrapy
+# Scrapy stuff
+back/.scrapy
 
 # Sphinx documentation
-docs/_build/
+back/docs/_build/
 
 # PyBuilder
-target/
+back/target/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+back/.ipynb_checkpoints
 
 # IPython
-profile_default/
-ipython_config.py
+back/profile_default/
+back/ipython_config.py
 
 # pyenv
-.python-version
+back/.python-version
 
 # pipenv
-Pipfile.lock
+back/Pipfile.lock
 
 # PEP 582
-__pypackages__/
+back/__pypackages__/
 
 # Celery stuff
-celerybeat-schedule
-celerybeat.pid
+back/celerybeat-schedule
+back/celerybeat.pid
 
 # SageMath parsed files
-*.sage.py
+back/**/*.sage.py
 
 # Environments
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-.venv
+back/venv/
+back/env/
+back/ENV/
+back/env.bak/
+back/venv.bak/
+back/.venv
 
 # Spyder project settings
-.spyderproject
-.spyproject
+back/.spyderproject
+back/.spyproject
 
 # Rope project settings
-.ropeproject
+back/.ropeproject
 
 # mkdocs documentation
-/site
+back/site
 
 # mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+back/.mypy_cache/
+back/.dmypy.json
+back/dmypy.json
 
 # Pyre type checker
-.pyre/
+back/.pyre/
 
 # ===========================================
-# Next.js (Frontend)
+# Next.js (Frontend) - Solo en front/
 # ===========================================
 
 # Dependencies
-node_modules/
-/.pnp
-.pnp.js
-.yarn/install-state.gz
+front/node_modules/
+front/.pnp
+front/.pnp.js
+front/.yarn/install-state.gz
 
 # Testing
-/coverage
+front/coverage
 
 # Next.js
-/.next/
-/out/
+front/.next/
+front/out/
 
 # Production
-/build
+front/build
 
-# Misc
-.DS_Store
-*.pem
-
-# Debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Debug logs (solo logs de npm/yarn)
+front/npm-debug.log*
+front/yarn-debug.log*
+front/yarn-error.log*
 
 # Local env files
-.env
-.env*.local
-.env.development.local
-.env.test.local
-.env.production.local
+front/.env
+front/.env*.local
+front/.env.development.local
+front/.env.test.local
+front/.env.production.local
 
 # Vercel
-.vercel
+front/.vercel
 
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
+# TypeScript cache
+front/**/*.tsbuildinfo
+front/next-env.d.ts
 
 # ===========================================
 # Environment Variables (Ambos proyectos)
@@ -239,7 +232,10 @@ $RECYCLE.BIN/
 # ===========================================
 # Logs y Archivos Temporales
 # ===========================================
+# Logs de aplicación (no archivos de configuración)
 *.log
+!front/**/*.config.*
+!back/**/*.config.*
 logs/
 *.tmp
 *.temp
