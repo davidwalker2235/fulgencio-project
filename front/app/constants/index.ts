@@ -1,4 +1,10 @@
-export const WEBSOCKET_URL = "ws://localhost:8000/ws";
+// URL del WebSocket - puede ser configurada mediante variable de entorno
+// En el navegador, siempre usamos localhost ya que el cliente se conecta desde su máquina
+export const WEBSOCKET_URL = 
+  process.env.NEXT_PUBLIC_WS_URL || 
+  (typeof window !== "undefined" 
+    ? `ws://${window.location.hostname}:8000/ws`
+    : "ws://localhost:8000/ws");
 
 export const AUDIO_CONFIG = {
   channelCount: 1,

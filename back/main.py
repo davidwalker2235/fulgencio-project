@@ -21,9 +21,15 @@ load_dotenv()
 app = FastAPI(title="GPT Realtime Voice API")
 
 # Configurar CORS para permitir conexiones desde el frontend
+# En Docker, el frontend puede estar en diferentes puertos
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

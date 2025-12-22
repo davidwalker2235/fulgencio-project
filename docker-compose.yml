@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    container_name: fulgencio-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-10-01-preview}
+      - MODEL_NAME=${MODEL_NAME:-gpt-realtime}
+    volumes:
+      - ./back:/app
+    restart: unless-stopped
+    networks:
+      - fulgencio-network
+
+  frontend:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    container_name: fulgencio-frontend
+    ports:
+      - "8080:3000"
+    environment:
+      - NODE_ENV=production
+      # La URL del WebSocket se resuelve dinámicamente en el cliente
+      # usando window.location.hostname, así que no necesita configuración aquí
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - fulgencio-network
+
+networks:
+  fulgencio-network:
+    driver: bridge
+
