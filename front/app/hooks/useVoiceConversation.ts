@@ -432,7 +432,8 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     }
 
     // Guardar la transcripción en la base de datos
-    write('transcriptions', transcription);
+    const timestamp = Date.now();
+    write(`transcriptions/${timestamp}`, transcription);
     console.log("Transcripción guardada en la base de datos");
 
     // Resetear estados
