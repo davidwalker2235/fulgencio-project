@@ -137,6 +137,11 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       // Los handlers se guardarán y se aplicarán cuando se cree el servicio
       console.log("📝 Registrando handlers de mensajes...");
       
+      // Handler genérico para debug - capturar todos los mensajes
+      onMessage("*", (data: WebSocketMessage) => {
+        console.log("🔍 Mensaje genérico recibido:", data.type, data);
+      });
+      
       onMessage("audio", async (blob: Blob) => {
         console.log("🔊 Handler de audio ejecutado");
         if (isInterruptedRef.current) {
@@ -180,14 +185,92 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       onMessage("conversation.item.output_text.delta", (data: WebSocketMessage) => {
+        console.log("📝 Delta de texto recibido:", data);
+        const deltaText = (data.delta as string) || "";
+        console.log("📝 Contenido delta:", deltaText);
+        
+        if (!deltaText || deltaText.trim() === "") {
+          console.log("⚠️ Delta vacío, ignorando");
+          return;
+        }
+        
+        setTranscription((prev) => {
+          console.log("📝 Estado anterior:", prev);
+          const lastMessage = prev[prev.length - 1];
+          console.log("📝 Último mensaje:", lastMessage);
+          
+          if (lastMessage && lastMessage.role === "assistant") {
+            const updated = [
+              ...prev.slice(0, -1),
+              {
+                ...lastMessage,
+                content: lastMessage.content + deltaText,
+              },
+            ];
+            console.log("📝 Actualizando mensaje existente de asistente, nuevo contenido:", updated[updated.length - 1].content);
+            return updated;
+          } else {
+            const newMessage = {
+              role: "assistant" as const,
+              content: deltaText,
+              timestamp: new Date(),
+            };
+            console.log("📝 Creando nuevo mensaje de asistente:", newMessage);
+            return [...prev, newMessage];
+          }
+        });
+      });
+
+      onMessage("conversation.item.output_text.done", (data: WebSocketMessage) => {
+        console.log("✅ Texto completo recibido:", data);
+        const fullText = (data.text as string) || "";
+        console.log("✅ Contenido completo:", fullText);
+        
         setTranscription((prev) => {
           const lastMessage = prev[prev.length - 1];
+          console.log("✅ Último mensaje antes de done:", lastMessage);
+          
+          if (lastMessage && lastMessage.role === "assistant") {
+            const updated = [
+              ...prev.slice(0, -1),
+              {
+                ...lastMessage,
+                content: fullText || lastMessage.content,
+              },
+            ];
+            console.log("✅ Actualizando mensaje final de asistente");
+            return updated;
+          } else {
+            const newMessage = {
+              role: "assistant" as const,
+              content: fullText,
+              timestamp: new Date(),
+            };
+            console.log("✅ Creando nuevo mensaje final de asistente:", newMessage);
+            return [...prev, newMessage];
+          }
+        });
+      });
+
+      // Handler para transcripción de audio de la IA (si viene como audio_transcript)
+      onMessage("response.audio_transcript.delta", (data: WebSocketMessage) => {
+        console.log("🎤 Transcripción de audio delta recibida:", data);
+        const transcriptDelta = (data.delta as string) || "";
+        console.log("🎤 Contenido delta de transcripción:", transcriptDelta);
+        
+        if (!transcriptDelta || transcriptDelta.trim() === "") {
+          return;
+        }
+        
+        setTranscription((prev) => {
+          const lastMessage = prev[prev.length - 1];
+          
           if (lastMessage && lastMessage.role === "assistant") {
             return [
               ...prev.slice(0, -1),
               {
                 ...lastMessage,
-                content: lastMessage.content + ((data.delta as string) || ""),
+                content: lastMessage.content + transcriptDelta,
               },
             ];
           } else {
@@ -195,7 +278,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
               ...prev,
               {
                 role: "assistant",
-                content: (data.delta as string) || "",
+                content: transcriptDelta,
                 timestamp: new Date(),
               },
             ];
@@ -203,15 +286,24 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         });
       });
 
-      onMessage("conversation.item.output_text.done", (data: WebSocketMessage) => {
+      onMessage("response.audio_transcript.done", (data: WebSocketMessage) => {
+        console.log("🎤 Transcripción de audio completa recibida:", data);
+        const fullTranscript = (data.transcript as string) || "";
+        console.log("🎤 Contenido completo de transcripción:", fullTranscript);
+        
+        if (!fullTranscript || fullTranscript.trim() === "") {
+          return;
+        }
+        
         setTranscription((prev) => {
           const lastMessage = prev[prev.length - 1];
+          
           if (lastMessage && lastMessage.role === "assistant") {
             return [
               ...prev.slice(0, -1),
               {
                 ...lastMessage,
-                content: (data.text as string) || lastMessage.content,
+                content: fullTranscript || lastMessage.content,
               },
             ];
           } else {
@@ -219,7 +311,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
               ...prev,
               {
                 role: "assistant",
-                content: (data.text as string) || "",
+                content: fullTranscript,
                 timestamp: new Date(),
               },
             ];

@@ -88,9 +88,14 @@ export class WebSocketService {
           console.log(`📨 Mensaje recibido: ${messageType}, handler encontrado`);
           handler(data);
         } else {
-          // Solo loggear si no es un tipo común que puede no tener handler
-          if (!messageType.includes("session") && !messageType.includes("response.audio_transcript")) {
-            console.log(`📨 Mensaje recibido: ${messageType}, sin handler registrado`);
+          // Loggear mensajes importantes para debug (filtrar algunos tipos comunes)
+          if (
+            !messageType.includes("session") && 
+            !messageType.includes("response.audio_transcript") &&
+            messageType !== "response.created" &&
+            messageType !== "response.done"
+          ) {
+            console.log(`📨 Mensaje recibido: ${messageType}, sin handler registrado`, data);
           }
         }
         // También llamar al handler genérico si existe

@@ -53,7 +53,9 @@ export function useWebSocket(): UseWebSocketReturn {
     }
     
     // Aplicar handlers de mensajes pendientes si existen
+    console.log(`📝 Aplicando ${pendingMessageHandlersRef.current.size} handlers pendientes`);
     pendingMessageHandlersRef.current.forEach((handler, type) => {
+      console.log(`📝 Aplicando handler pendiente para tipo: ${type}`);
       service.onMessage(type, handler);
     });
     pendingMessageHandlersRef.current.clear();
@@ -78,12 +80,15 @@ export function useWebSocket(): UseWebSocketReturn {
 
   const onMessage = useCallback(
     (type: string, handler: (data: any) => void) => {
+      console.log(`📝 Registrando handler para tipo: ${type}, servicio existe: ${!!wsServiceRef.current}`);
       if (wsServiceRef.current) {
         // Si el servicio ya existe, aplicar directamente
         wsServiceRef.current.onMessage(type, handler);
+        console.log(`✅ Handler aplicado directamente al servicio existente`);
       } else {
         // Si no existe, guardar para aplicar cuando se cree
         pendingMessageHandlersRef.current.set(type, handler);
+        console.log(`💾 Handler guardado para aplicar cuando se cree el servicio`);
       }
     },
     []
