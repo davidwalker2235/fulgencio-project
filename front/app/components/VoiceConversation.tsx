@@ -207,7 +207,7 @@ export default function VoiceConversation() {
                 type: "server_vad",
                 threshold: 0.5,
                 prefix_padding_ms: 300,
-                silence_duration_ms: 500,
+                silence_duration_ms: 1000,
               },
             },
           })
@@ -474,7 +474,7 @@ export default function VoiceConversation() {
                 );
               }
               silenceTimerRef.current = null;
-            }, 500);
+            }, 1000);
           }
           
           // Convertir Float32Array a Int16Array (PCM16)
