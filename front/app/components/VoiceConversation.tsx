@@ -26,7 +26,7 @@ export default function VoiceConversation() {
         <ConversationButton
           isRecording={isRecording}
           connectionStatus={connectionStatus}
-          onToggle={toggleConversation}
+          onToggle={() =>toggleConversation(transcription)}
         />
 
         <ConnectionStatus status={connectionStatus} />

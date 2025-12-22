@@ -16,8 +16,8 @@ interface UseVoiceConversationReturn {
   error: string;
   connectionStatus: ConnectionStatus;
   startConversation: () => Promise<void>;
-  stopConversation: () => void;
-  toggleConversation: () => void;
+  stopConversation: (transcripción: Message[]) => void;
+  toggleConversation: (transcripción: Message[]) => void;
   clearError: () => void;
 }
 
@@ -402,7 +402,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     hasActiveAudio,
   ]);
 
-  const stopConversation = useCallback(() => {
+  const stopConversation = useCallback((transcription: Message[]) => {
     console.log("Deteniendo conversación...");
 
     // Detener todo el audio inmediatamente
@@ -438,9 +438,10 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setTranscription([]);
   }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected]);
 
-  const toggleConversation = useCallback(() => {
+  const toggleConversation = useCallback((transcription: Message[]) => {
+    const aaa = transcription
     if (isRecording) {
-      stopConversation();
+      stopConversation(transcription);
     } else {
       startConversation();
     }
