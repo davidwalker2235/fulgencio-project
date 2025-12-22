@@ -55,6 +55,13 @@ Hook principal que orquesta toda la lógica de conversación de voz. Combina los
 - Manejo de errores
 - Interrupciones de audio
 
+### `useFirebase`
+Hook para gestionar conexiones y operaciones con Firebase Realtime Database. Proporciona:
+- Operaciones CRUD (Create, Read, Update, Delete)
+- Operaciones con push (ID automático)
+- Suscripciones en tiempo real
+- Manejo de estados de carga y errores
+
 ## Servicios
 
 ### `websocketService`
@@ -68,6 +75,12 @@ Utilidades para procesamiento de audio:
 - Conversión entre formatos (Float32, PCM16)
 - Cálculo de niveles de audio
 - Conversión de base64 a audio
+
+### `firebaseService`
+Servicio para operaciones avanzadas con Firebase Realtime Database:
+- Operaciones CRUD
+- Suscripciones en tiempo real
+- Referencias a rutas específicas
 
 ## Componentes
 

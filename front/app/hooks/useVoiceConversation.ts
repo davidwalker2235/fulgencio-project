@@ -8,6 +8,7 @@ import {
   arrayBufferToFloat32,
   base64ToFloat32,
 } from "../services/audioUtils";
+import { useFirebase } from "./useFirebase";
 
 interface UseVoiceConversationReturn {
   isConnected: boolean;
@@ -43,6 +44,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const { startRecording, stopRecording, isRecording: audioIsRecording } =
     useAudioRecording();
   const { playAudio, stopAllAudio, hasActiveAudio } = useAudioPlayback();
+  const { write, read, subscribe, loading, error: firebaseError } = useFirebase();
 
   const currentResponseIdRef = useRef<string | null>(null);
   const isUserSpeakingRef = useRef<boolean>(false);
@@ -428,6 +430,10 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
+
+    // Guardar la transcripción en la base de datos
+    write('transcriptions', transcription);
+    console.log("Transcripción guardada en la base de datos");
 
     // Resetear estados
     setIsRecording(false);
