@@ -265,6 +265,30 @@ jobs:
               az role assignment create --assignee "$IDENTITY_PRINCIPAL_ID" --role AcrPull --scope "$ACR_ID" 2>/dev/null || echo "Warning: Could not create role assignment manually. Terraform will attempt to create it, but may fail if Service Principal lacks 'User Access Administrator' permissions."
             fi
           fi
+          
+          # Import Container App Backend if it exists
+          if az containerapp show --name fulgencio-backend --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query id -o tsv 2>/dev/null; then
+            if ! terraform state show azurerm_container_app.backend 2>/dev/null; then
+              echo "Container App Backend exists but not in state. Importing..."
+              terraform import azurerm_container_app.backend /subscriptions/${{ steps.set-subscription.outputs.subscription_id }}/resourceGroups/${{ env.AZURE_RESOURCE_GROUP }}/providers/Microsoft.App/containerApps/fulgencio-backend
+            else
+              echo "Container App Backend already in Terraform state."
+            fi
+          else
+            echo "Container App Backend does not exist. Terraform will create it."
+          fi
+          
+          # Import Container App Frontend if it exists
+          if az containerapp show --name fulgencio-frontend --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query id -o tsv 2>/dev/null; then
+            if ! terraform state show azurerm_container_app.frontend 2>/dev/null; then
+              echo "Container App Frontend exists but not in state. Importing..."
+              terraform import azurerm_container_app.frontend /subscriptions/${{ steps.set-subscription.outputs.subscription_id }}/resourceGroups/${{ env.AZURE_RESOURCE_GROUP }}/providers/Microsoft.App/containerApps/fulgencio-frontend
+            else
+              echo "Container App Frontend already in Terraform state."
+            fi
+          else
+            echo "Container App Frontend does not exist. Terraform will create it."
+          fi
         env:
           ARM_SUBSCRIPTION_ID: ${{ steps.set-subscription.outputs.subscription_id }}
           TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
