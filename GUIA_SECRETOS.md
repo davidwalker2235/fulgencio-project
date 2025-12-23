@@ -37,6 +37,30 @@ az ad sp create-for-rbac --name "fulgencio-sp" \
   --sdk-auth
 ```
 
+### Paso 1.3: Asignar rol adicional para asignaciones de roles
+
+**⚠️ IMPORTANTE**: El Service Principal necesita el rol **"User Access Administrator"** para poder crear asignaciones de roles (necesario para la autenticación con ACR):
+
+```bash
+# Obtener el Object ID del Service Principal
+SP_OBJECT_ID=$(az ad sp list --display-name "fulgencio-sp" --query "[0].id" -o tsv)
+
+# Asignar el rol "User Access Administrator" a nivel de suscripción
+az role assignment create \
+  --assignee $SP_OBJECT_ID \
+  --role "User Access Administrator" \
+  --scope /subscriptions/tu-subscription-id
+```
+
+**Alternativa**: Si prefieres usar el rol "Owner" (que incluye todos los permisos):
+
+```bash
+az role assignment create \
+  --assignee $SP_OBJECT_ID \
+  --role "Owner" \
+  --scope /subscriptions/tu-subscription-id
+```
+
 **⚠️ IMPORTANTE**: Este comando mostrará un JSON. **Copia TODO el JSON completo**, incluyendo las llaves `{}`.
 
 **Ejemplo de salida**:
