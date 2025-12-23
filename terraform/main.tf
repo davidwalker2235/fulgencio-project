@@ -69,13 +69,21 @@ resource "azurerm_user_assigned_identity" "main" {
 # Nota: Si el Service Principal no tiene permisos "User Access Administrator" o "Owner",
 # este recurso fallará. En ese caso, asigna el rol manualmente usando:
 # az role assignment create --assignee <identity-principal-id> --role AcrPull --scope <acr-id>
+# IMPORTANTE: Este role assignment debe crearse ANTES de que los Container Apps intenten usar las imágenes
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = azurerm_container_registry.main.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_user_assigned_identity.main.principal_id
+  
+  # Asegurar que el role assignment se cree antes de los Container Apps
+  depends_on = [
+    azurerm_user_assigned_identity.main,
+    azurerm_container_registry.main
+  ]
 }
 
 # Container App - Backend
+# IMPORTANTE: Depende del role assignment para poder autenticarse con el ACR
 resource "azurerm_container_app" "backend" {
   name                         = "${var.project_name}-backend"
   container_app_environment_id = azurerm_container_app_environment.main.id
@@ -85,6 +93,11 @@ resource "azurerm_container_app" "backend" {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.main.id]
   }
+  
+  # Asegurar que el role assignment existe antes de crear el Container App
+  depends_on = [
+    azurerm_role_assignment.acr_pull
+  ]
 
   template {
     min_replicas = var.backend_min_replicas
@@ -95,13 +108,6 @@ resource "azurerm_container_app" "backend" {
       image  = "${azurerm_container_registry.main.login_server}/backend:latest"
       cpu    = var.backend_cpu
       memory = var.backend_memory
-
-      # Configurar autenticación con ACR usando credenciales
-      registry {
-        server   = azurerm_container_registry.main.login_server
-        username = azurerm_container_registry.main.admin_username
-        password_secret_name = "acr-password"
-      }
 
       env {
         name  = "AZURE_OPENAI_ENDPOINT"
@@ -146,15 +152,11 @@ resource "azurerm_container_app" "backend" {
     value = var.azure_openai_api_key
   }
 
-  secret {
-    name  = "acr-password"
-    value = azurerm_container_registry.main.admin_password
-  }
-
   tags = var.tags
 }
 
 # Container App - Frontend
+# IMPORTANTE: Depende del role assignment para poder autenticarse con el ACR
 resource "azurerm_container_app" "frontend" {
   name                         = "${var.project_name}-frontend"
   container_app_environment_id = azurerm_container_app_environment.main.id
@@ -164,6 +166,11 @@ resource "azurerm_container_app" "frontend" {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.main.id]
   }
+  
+  # Asegurar que el role assignment existe antes de crear el Container App
+  depends_on = [
+    azurerm_role_assignment.acr_pull
+  ]
 
   template {
     min_replicas = var.frontend_min_replicas
@@ -174,13 +181,6 @@ resource "azurerm_container_app" "frontend" {
       image  = "${azurerm_container_registry.main.login_server}/frontend:latest"
       cpu    = var.frontend_cpu
       memory = var.frontend_memory
-
-      # Configurar autenticación con ACR usando credenciales
-      registry {
-        server   = azurerm_container_registry.main.login_server
-        username = azurerm_container_registry.main.admin_username
-        password_secret_name = "acr-password"
-      }
 
       env {
         name  = "NODE_ENV"
@@ -213,11 +213,6 @@ resource "azurerm_container_app" "frontend" {
       latest_revision = true
       percentage      = 100
     }
-  }
-
-  secret {
-    name  = "acr-password"
-    value = azurerm_container_registry.main.admin_password
   }
 
   tags = var.tags
