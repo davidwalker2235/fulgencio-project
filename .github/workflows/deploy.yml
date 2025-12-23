@@ -15,7 +15,53 @@ env:
   FRONTEND_IMAGE: frontend
 
 jobs:
+  setup-infrastructure:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan (ACR and dependencies)
+        working-directory: ./terraform
+        run: terraform plan -target=azurerm_resource_group.main -target=azurerm_container_registry.main -out=tfplan-acr
+        env:
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
+        continue-on-error: true
+
+      - name: Terraform Apply (ACR and dependencies)
+        working-directory: ./terraform
+        run: |
+          if [ -f tfplan-acr ]; then
+            terraform apply -auto-approve tfplan-acr
+          else
+            terraform apply -target=azurerm_resource_group.main -target=azurerm_container_registry.main -auto-approve
+          fi
+        env:
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
+
   build-and-push:
+    needs: setup-infrastructure
     runs-on: ubuntu-latest
     
     steps:
