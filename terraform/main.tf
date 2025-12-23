@@ -96,6 +96,13 @@ resource "azurerm_container_app" "backend" {
       cpu    = var.backend_cpu
       memory = var.backend_memory
 
+      # Configurar autenticación con ACR usando credenciales
+      registry {
+        server   = azurerm_container_registry.main.login_server
+        username = azurerm_container_registry.main.admin_username
+        password_secret_name = "acr-password"
+      }
+
       env {
         name  = "AZURE_OPENAI_ENDPOINT"
         value = var.azure_openai_endpoint
@@ -139,6 +146,11 @@ resource "azurerm_container_app" "backend" {
     value = var.azure_openai_api_key
   }
 
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.main.admin_password
+  }
+
   tags = var.tags
 }
 
@@ -162,6 +174,13 @@ resource "azurerm_container_app" "frontend" {
       image  = "${azurerm_container_registry.main.login_server}/frontend:latest"
       cpu    = var.frontend_cpu
       memory = var.frontend_memory
+
+      # Configurar autenticación con ACR usando credenciales
+      registry {
+        server   = azurerm_container_registry.main.login_server
+        username = azurerm_container_registry.main.admin_username
+        password_secret_name = "acr-password"
+      }
 
       env {
         name  = "NODE_ENV"
@@ -194,6 +213,11 @@ resource "azurerm_container_app" "frontend" {
       latest_revision = true
       percentage      = 100
     }
+  }
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.main.admin_password
   }
 
   tags = var.tags
