@@ -1,21 +1,12 @@
-terraform {
-  required_version = ">= 1.0"
-  
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
-  }
-  
-  # Backend configurado opcionalmente - descomenta y configura después de crear el Storage Account
-  # backend "azurerm" {
-  #   resource_group_name  = "fulgencio-rg"
-  #   storage_account_name = "tfstatefulgencio"
-  #   container_name       = "tfstate"
-  #   key                  = "fulgencio.terraform.tfstate"
-  # }
-}
+# Backend configurado opcionalmente - descomenta y configura después de crear el Storage Account
+# terraform {
+#   backend "azurerm" {
+#     resource_group_name  = "fulgencio-rg"
+#     storage_account_name = "tfstatefulgencio"
+#     container_name       = "tfstate"
+#     key                  = "fulgencio.terraform.tfstate"
+#   }
+# }
 
 provider "azurerm" {
   features {
