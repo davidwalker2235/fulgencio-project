@@ -90,6 +90,11 @@ resource "azurerm_container_app" "backend" {
     min_replicas = var.backend_min_replicas
     max_replicas = var.backend_max_replicas
 
+    registry {
+      server   = azurerm_container_registry.main.login_server
+      identity = azurerm_user_assigned_identity.main.id
+    }
+
     container {
       name   = "backend"
       image  = "${azurerm_container_registry.main.login_server}/backend:latest"
@@ -157,6 +162,11 @@ resource "azurerm_container_app" "frontend" {
     min_replicas = var.frontend_min_replicas
     max_replicas = var.frontend_max_replicas
 
+    registry {
+      server   = azurerm_container_registry.main.login_server
+      identity = azurerm_user_assigned_identity.main.id
+    }
+
     container {
       name   = "frontend"
       image  = "${azurerm_container_registry.main.login_server}/frontend:latest"
@@ -166,6 +176,21 @@ resource "azurerm_container_app" "frontend" {
       env {
         name  = "NODE_ENV"
         value = "production"
+      }
+
+      env {
+        name  = "PORT"
+        value = "3000"
+      }
+
+      env {
+        name  = "HOSTNAME"
+        value = "0.0.0.0"
+      }
+
+      env {
+        name  = "NEXT_PUBLIC_WS_URL"
+        value = "wss://${azurerm_container_app.backend.latest_revision_fqdn}/ws"
       }
     }
   }
