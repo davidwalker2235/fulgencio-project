@@ -211,6 +211,30 @@ jobs:
           else
             echo "ACR does not exist. Terraform will create it."
           fi
+          
+          # Import Log Analytics Workspace if it exists
+          if az monitor log-analytics workspace show --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --workspace-name fulgencio-logs --query id -o tsv 2>/dev/null; then
+            if ! terraform state show azurerm_log_analytics_workspace.main 2>/dev/null; then
+              echo "Log Analytics Workspace exists but not in state. Importing..."
+              terraform import azurerm_log_analytics_workspace.main /subscriptions/${{ steps.set-subscription.outputs.subscription_id }}/resourceGroups/${{ env.AZURE_RESOURCE_GROUP }}/providers/Microsoft.OperationalInsights/workspaces/fulgencio-logs
+            else
+              echo "Log Analytics Workspace already in Terraform state."
+            fi
+          else
+            echo "Log Analytics Workspace does not exist. Terraform will create it."
+          fi
+          
+          # Import User Assigned Identity if it exists
+          if az identity show --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name fulgencio-identity --query id -o tsv 2>/dev/null; then
+            if ! terraform state show azurerm_user_assigned_identity.main 2>/dev/null; then
+              echo "User Assigned Identity exists but not in state. Importing..."
+              terraform import azurerm_user_assigned_identity.main /subscriptions/${{ steps.set-subscription.outputs.subscription_id }}/resourceGroups/${{ env.AZURE_RESOURCE_GROUP }}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fulgencio-identity
+            else
+              echo "User Assigned Identity already in Terraform state."
+            fi
+          else
+            echo "User Assigned Identity does not exist. Terraform will create it."
+          fi
         env:
           ARM_SUBSCRIPTION_ID: ${{ steps.set-subscription.outputs.subscription_id }}
           TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
