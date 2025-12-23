@@ -88,14 +88,14 @@ Crea estos secretos uno por uno:
 #### `AZURE_OPENAI_ENDPOINT` ⚠️ REQUERIDO
 - **Nombre**: `AZURE_OPENAI_ENDPOINT`
 - **Valor**: Tu endpoint de Azure OpenAI (del archivo `.env`)
-- **Dónde encontrarlo**: En tu archivo `.env` o `back/.env`
-- **Ejemplo**: `https://services-aida-apps-sweden.cognitiveservices.azure.com`
+- **Dónde encontrarlo**: Abre `back/.env` o `.env` y copia el valor de `AZURE_OPENAI_ENDPOINT`
+- **Formato**: `https://tu-recurso.cognitiveservices.azure.com`
 
 #### `AZURE_OPENAI_API_KEY` ⚠️ REQUERIDO
 - **Nombre**: `AZURE_OPENAI_API_KEY`
 - **Valor**: Tu API key de Azure OpenAI (del archivo `.env`)
-- **Dónde encontrarlo**: En tu archivo `.env` o `back/.env`
-- **⚠️ IMPORTANTE**: Mantén este secreto seguro, nunca lo compartas
+- **Dónde encontrarlo**: Abre `back/.env` o `.env` y copia el valor de `AZURE_OPENAI_API_KEY`
+- **⚠️ IMPORTANTE**: Mantén este secreto seguro, nunca lo compartas ni lo subas a GitHub
 
 #### `AZURE_OPENAI_API_VERSION` ⚠️ REQUERIDO
 - **Nombre**: `AZURE_OPENAI_API_VERSION`

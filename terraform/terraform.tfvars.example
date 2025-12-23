@@ -7,7 +7,9 @@ project_name        = "fulgencio"
 acr_name            = "fulgencioacr"  # Debe ser único globalmente, solo minúsculas y números
 
 # Azure OpenAI Configuration
-azure_openai_endpoint = "https://services-aida-apps-sweden.cognitiveservices.azure.com"
+# IMPORTANTE: Reemplaza estos valores con los de tu archivo .env o back/.env
+# NO subas este archivo con credenciales reales a GitHub
+azure_openai_endpoint = "https://tu-recurso.cognitiveservices.azure.com"
 azure_openai_api_key  = "tu_api_key_aqui"
 azure_openai_api_version = "2024-10-01-preview"
 model_name           = "gpt-realtime"
