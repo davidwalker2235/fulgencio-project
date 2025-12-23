@@ -90,11 +90,6 @@ resource "azurerm_container_app" "backend" {
     min_replicas = var.backend_min_replicas
     max_replicas = var.backend_max_replicas
 
-    registry {
-      server   = azurerm_container_registry.main.login_server
-      identity = azurerm_user_assigned_identity.main.id
-    }
-
     container {
       name   = "backend"
       image  = "${azurerm_container_registry.main.login_server}/backend:latest"
@@ -161,11 +156,6 @@ resource "azurerm_container_app" "frontend" {
   template {
     min_replicas = var.frontend_min_replicas
     max_replicas = var.frontend_max_replicas
-
-    registry {
-      server   = azurerm_container_registry.main.login_server
-      identity = azurerm_user_assigned_identity.main.id
-    }
 
     container {
       name   = "frontend"
