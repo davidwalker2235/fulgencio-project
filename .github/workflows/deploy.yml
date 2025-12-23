@@ -261,10 +261,17 @@ jobs:
                 echo "Role Assignment already in Terraform state."
               fi
             else
-              echo "Role Assignment does not exist. Attempting to create it manually (Terraform will also try)..."
-              az role assignment create --assignee "$IDENTITY_PRINCIPAL_ID" --role AcrPull --scope "$ACR_ID" 2>/dev/null || echo "Warning: Could not create role assignment manually. Terraform will attempt to create it, but may fail if Service Principal lacks 'User Access Administrator' permissions."
+              echo "Role Assignment does not exist. Attempting to create it manually..."
+              az role assignment create --assignee "$IDENTITY_PRINCIPAL_ID" --role AcrPull --scope "$ACR_ID" 2>/dev/null && echo "✅ Role assignment created successfully" || echo "❌ Warning: Could not create role assignment. This may cause ImagePullBackOff errors. Ensure Service Principal has 'User Access Administrator' permissions."
             fi
+          else
+            echo "⚠️ Warning: Could not get Identity Principal ID or ACR ID. Role assignment may not work correctly."
           fi
+          
+          # Verificar que las imágenes existen en el ACR
+          echo "Verifying images exist in ACR..."
+          az acr repository show --name ${{ env.ACR_NAME }} --repository ${{ env.BACKEND_IMAGE }} 2>/dev/null && echo "✅ Backend image exists" || echo "❌ Backend image not found in ACR"
+          az acr repository show --name ${{ env.ACR_NAME }} --repository ${{ env.FRONTEND_IMAGE }} 2>/dev/null && echo "✅ Frontend image exists" || echo "❌ Frontend image not found in ACR"
           
           # Import Container App Backend if it exists
           if az containerapp show --name fulgencio-backend --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query id -o tsv 2>/dev/null; then
@@ -307,6 +314,28 @@ jobs:
           TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
 
+      - name: Ensure Role Assignment exists before deploying
+        run: |
+          # Verificar y crear el role assignment si no existe
+          IDENTITY_PRINCIPAL_ID=$(az identity show --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name fulgencio-identity --query principalId -o tsv)
+          ACR_ID=$(az acr show --name ${{ env.ACR_NAME }} --query id -o tsv)
+          
+          ROLE_ASSIGNMENT_ID=$(az role assignment list --scope "$ACR_ID" --assignee "$IDENTITY_PRINCIPAL_ID" --role AcrPull --query "[0].id" -o tsv || echo "")
+          
+          if [ -z "$ROLE_ASSIGNMENT_ID" ]; then
+            echo "Creating role assignment for ACR authentication..."
+            az role assignment create \
+              --assignee "$IDENTITY_PRINCIPAL_ID" \
+              --role AcrPull \
+              --scope "$ACR_ID" \
+              --output none
+            echo "✅ Role assignment created"
+          else
+            echo "✅ Role assignment already exists"
+          fi
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ steps.set-subscription.outputs.subscription_id }}
+
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -auto-approve tfplan
@@ -316,6 +345,45 @@ jobs:
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
           TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
+
+      - name: Configure ACR registry for Container Apps
+        run: |
+          # Obtener credenciales del ACR
+          ACR_USERNAME=$(az acr credential show --name ${{ env.ACR_NAME }} --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name ${{ env.ACR_NAME }} --query passwords[0].value -o tsv)
+          IDENTITY_CLIENT_ID=$(az identity show --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name fulgencio-identity --query clientId -o tsv)
+          
+          # Configurar registry para backend - intentar managed identity primero, luego credenciales
+          echo "Configuring ACR registry for backend..."
+          az containerapp registry set \
+            --name fulgencio-backend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --server ${{ env.ACR_NAME }}.azurecr.io \
+            --identity $IDENTITY_CLIENT_ID 2>/dev/null || \
+          az containerapp registry set \
+            --name fulgencio-backend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --server ${{ env.ACR_NAME }}.azurecr.io \
+            --username $ACR_USERNAME \
+            --password $ACR_PASSWORD
+          
+          # Configurar registry para frontend - intentar managed identity primero, luego credenciales
+          echo "Configuring ACR registry for frontend..."
+          az containerapp registry set \
+            --name fulgencio-frontend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --server ${{ env.ACR_NAME }}.azurecr.io \
+            --identity $IDENTITY_CLIENT_ID 2>/dev/null || \
+          az containerapp registry set \
+            --name fulgencio-frontend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --server ${{ env.ACR_NAME }}.azurecr.io \
+            --username $ACR_USERNAME \
+            --password $ACR_PASSWORD
+          
+          echo "✅ ACR registry configured for both Container Apps"
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ steps.set-subscription.outputs.subscription_id }}
 
       - name: Get Frontend URL
         working-directory: ./terraform
