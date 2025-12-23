@@ -66,6 +66,9 @@ resource "azurerm_user_assigned_identity" "main" {
 }
 
 # Asignar permisos de ACR a la identidad
+# Nota: Si el Service Principal no tiene permisos "User Access Administrator" o "Owner",
+# este recurso fallará. En ese caso, asigna el rol manualmente usando:
+# az role assignment create --assignee <identity-principal-id> --role AcrPull --scope <acr-id>
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = azurerm_container_registry.main.id
   role_definition_name = "AcrPull"
