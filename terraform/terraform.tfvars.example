@@ -1,0 +1,29 @@
+# Copia este archivo a terraform.tfvars y rellena los valores
+# terraform.tfvars está en .gitignore y no se subirá al repositorio
+
+resource_group_name = "fulgencio-rg"
+location            = "West Europe"
+project_name        = "fulgencio"
+acr_name            = "fulgencioacr"  # Debe ser único globalmente, solo minúsculas y números
+
+# Azure OpenAI Configuration
+azure_openai_endpoint = "https://services-aida-apps-sweden.cognitiveservices.azure.com"
+azure_openai_api_key  = "tu_api_key_aqui"
+azure_openai_api_version = "2024-10-01-preview"
+model_name           = "gpt-realtime"
+
+# CORS - Se actualizará automáticamente con el FQDN del frontend después del primer despliegue
+cors_origins = "https://fulgencio-frontend.*.azurecontainerapps.io"
+
+# Recursos del backend
+backend_min_replicas = 1
+backend_max_replicas = 3
+backend_cpu          = 0.5
+backend_memory       = "1.0Gi"
+
+# Recursos del frontend
+frontend_min_replicas = 1
+frontend_max_replicas = 3
+frontend_cpu          = 0.5
+frontend_memory       = "1.0Gi"
+

@@ -1,9 +1,12 @@
 // URL del WebSocket - puede ser configurada mediante variable de entorno
-// En el navegador, siempre usamos localhost ya que el cliente se conecta desde su máquina
+// En producción (Azure), usa wss:// con el hostname del backend
+// En desarrollo, usa ws:// con localhost
 export const WEBSOCKET_URL = 
   process.env.NEXT_PUBLIC_WS_URL || 
   (typeof window !== "undefined" 
-    ? `ws://${window.location.hostname}:8000/ws`
+    ? (window.location.protocol === "https:" 
+        ? `wss://${window.location.hostname.replace('fulgencio-frontend', 'fulgencio-backend')}/ws`
+        : `ws://${window.location.hostname}:8000/ws`)
     : "ws://localhost:8000/ws");
 
 export const AUDIO_CONFIG = {
