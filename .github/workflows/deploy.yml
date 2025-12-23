@@ -62,6 +62,10 @@ jobs:
           fi
         env:
           ARM_SUBSCRIPTION_ID: ${{ steps.set-subscription.outputs.subscription_id }}
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
         continue-on-error: true
 
       - name: Terraform Plan (ACR and dependencies)
