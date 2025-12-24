@@ -1,121 +1,176 @@
-# Proyecto de Conversación de Voz con GPT Realtime
+# GPT Realtime Voice Conversation Project
 
-Este proyecto permite mantener conversaciones de voz en tiempo real con el modelo GPT Realtime desplegado en Microsoft Foundry.
+This project enables real-time voice conversations with the GPT Realtime model deployed on Microsoft Foundry, featuring user authentication via Firebase Realtime Database.
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 fulgencio-project/
-├── back/          # Backend en Python con FastAPI
-└── front/         # Frontend en Next.js
+├── back/          # Backend in Python with FastAPI
+├── front/         # Frontend in Next.js with authentication
+└── terraform/     # Infrastructure as Code
 ```
 
-## Requisitos Previos
+## Prerequisites
 
-- Python 3.8 o superior
-- Node.js 18 o superior
-- Credenciales de Microsoft Foundry (endpoint y API key)
+- Python 3.8 or higher
+- Node.js 18 or higher
+- Microsoft Foundry credentials (endpoint and API key)
+- Firebase Realtime Database (for authentication)
 
-## Configuración del Backend
+## Features
 
-1. Navega a la carpeta `back`:
+- ✅ Real-time voice conversation
+- ✅ Conversation transcription
+- ✅ Connection status indicator
+- ✅ User authentication with Firebase
+- ✅ Session persistence with localStorage
+- ✅ Error handling
+- ✅ Modern and responsive interface
+
+## Backend Setup
+
+1. Navigate to the `back` folder:
 ```bash
 cd back
 ```
 
-2. Crea un entorno virtual:
+2. Create a virtual environment:
 ```bash
 python -m venv venv
 ```
 
-3. Activa el entorno virtual:
+3. Activate the virtual environment:
 - Windows: `venv\Scripts\activate`
 - Linux/Mac: `source venv/bin/activate`
 
-4. Instala las dependencias:
+4. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-5. Configura las variables de entorno:
-- Crea un archivo `.env` en la carpeta `back` con el siguiente contenido:
+5. Configure environment variables:
+- Create a `.env` file in the `back` folder with the following content:
 ```
-AZURE_OPENAI_ENDPOINT=https://tu-endpoint.openai.azure.com
-AZURE_OPENAI_API_KEY=tu-api-key-aqui
+AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com
+AZURE_OPENAI_API_KEY=your-api-key-here
 AZURE_OPENAI_API_VERSION=2024-10-01-preview
 MODEL_NAME=gpt-realtime
 ```
 
-6. Ejecuta el servidor:
+6. Run the server:
 ```bash
 python main.py
 ```
 
-O con uvicorn directamente:
+Or with uvicorn directly:
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-El servidor estará disponible en `http://localhost:8000`
+The server will be available at `http://localhost:8000`
 
-## Configuración del Frontend
+## Frontend Setup
 
-1. Navega a la carpeta `front`:
+1. Navigate to the `front` folder:
 ```bash
 cd front
 ```
 
-2. Instala las dependencias:
+2. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Ejecuta el servidor de desarrollo:
+3. Configure Firebase:
+- The Firebase configuration is already set up in `firebaseConfig.ts`
+- Ensure your Firebase Realtime Database has a `credentials` node with:
+  ```json
+  {
+    "credentials": {
+      "user": "your-username",
+      "pass": "your-password"
+    }
+  }
+  ```
+
+4. Run the development server:
 ```bash
 npm run dev
 ```
 
-La aplicación estará disponible en `http://localhost:3000`
+The application will be available at `http://localhost:3000`
 
-## Uso
+## Usage
 
-1. Asegúrate de que ambos servidores estén ejecutándose (backend en puerto 8000 y frontend en puerto 3000).
+1. Make sure both servers are running (backend on port 8000 and frontend on port 3000).
 
-2. Abre tu navegador y ve a `http://localhost:3000`.
+2. Open your browser and go to `http://localhost:3000`.
 
-3. Haz clic en el botón "Iniciar Conversación" para comenzar.
+3. You will be redirected to the login page (`/login`) if not authenticated.
 
-4. Permite el acceso al micrófono cuando el navegador lo solicite.
+4. Enter your credentials (stored in Firebase Realtime Database under the `credentials` node).
 
-5. Habla con la IA. Verás la transcripción de la conversación en tiempo real.
+5. After successful login, you'll be redirected to the main page.
 
-6. Haz clic en "Detener Conversación" para finalizar.
+6. Click the "Start Conversation" button to begin.
 
-## Características
+7. Allow microphone access when the browser requests it.
 
-- ✅ Conversación de voz en tiempo real
-- ✅ Transcripción de la conversación
-- ✅ Indicador de estado de conexión
-- ✅ Manejo de errores
-- ✅ Interfaz moderna y responsive
+8. Speak with the AI. You'll see the conversation transcription in real-time.
 
-## Solución de Problemas
+9. Click "Stop Conversation" to end the session.
 
-### Error: "Azure OpenAI no está configurado"
-- Verifica que el archivo `.env` existe en la carpeta `back` y contiene las credenciales correctas.
+## Authentication System
 
-### Error: "Error al acceder al micrófono"
-- Asegúrate de haber dado permisos al navegador para acceder al micrófono.
-- Verifica que no haya otras aplicaciones usando el micrófono.
+The application includes a complete authentication system:
 
-### Error: "Error en la conexión WebSocket"
-- Verifica que el backend esté ejecutándose en el puerto 8000.
-- Verifica que las credenciales de Microsoft Foundry sean correctas.
-- Revisa la consola del navegador para más detalles del error.
+- **Login Page**: Located at `/login`, validates credentials against Firebase Realtime Database
+- **Session Persistence**: Credentials are saved in localStorage, so you don't need to log in every time you open the browser
+- **Protected Routes**: The main page automatically redirects to login if not authenticated
+- **Auto-redirect**: If already authenticated, the login page redirects to the main page
 
-## Notas
+### Authentication Flow
 
-- El proyecto está configurado para usar el modelo `gpt-realtime` desplegado en Microsoft Foundry.
-- El audio se procesa en formato PCM16 a 24kHz.
-- La transcripción se realiza usando Whisper-1.
+1. User enters username and password on the login page
+2. Credentials are verified against Firebase Realtime Database (`credentials` node)
+3. On success, authentication state and credentials are saved to localStorage
+4. User is redirected to the main application
+5. On subsequent visits, authentication is automatically restored from localStorage
 
+## Troubleshooting
+
+### Error: "Azure OpenAI is not configured"
+- Verify that the `.env` file exists in the `back` folder and contains the correct credentials.
+
+### Error: "Error accessing microphone"
+- Make sure you've granted the browser permission to access the microphone.
+- Verify that no other applications are using the microphone.
+
+### Error: "WebSocket connection error"
+- Verify that the backend is running on port 8000.
+- Verify that Microsoft Foundry credentials are correct.
+- Check the browser console for more error details.
+
+### Error: "User or password incorrect"
+- Verify that the `credentials` node exists in Firebase Realtime Database.
+- Check that the username and password match the values in Firebase.
+
+### Authentication not persisting
+- Check browser localStorage permissions
+- Verify that cookies/localStorage are enabled in your browser
+
+## Technical Details
+
+- The project uses the `gpt-realtime` model deployed on Microsoft Foundry.
+- Audio is processed in PCM16 format at 24kHz.
+- Transcription is performed using Whisper-1.
+- Authentication credentials are stored in Firebase Realtime Database.
+- Session persistence is managed via localStorage using a custom `useAuth` hook.
+
+## Project Architecture
+
+- **Backend**: FastAPI with WebSocket support for real-time communication
+- **Frontend**: Next.js 16 with React 19, TypeScript, and Tailwind CSS
+- **Database**: Firebase Realtime Database for authentication
+- **State Management**: Custom React hooks for authentication and Firebase operations

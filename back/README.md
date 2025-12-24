@@ -1,46 +1,73 @@
 # Backend - GPT Realtime Voice API
 
-Backend en Python con FastAPI para mantener conversaciones de voz con el modelo GPT Realtime desplegado en Microsoft Foundry.
+Backend in Python with FastAPI for maintaining voice conversations with the GPT Realtime model deployed on Microsoft Foundry.
 
-## Configuración
+## Setup
 
-1. Crea un entorno virtual:
+1. Create a virtual environment:
 ```bash
 python -m venv venv
 ```
 
-2. Activa el entorno virtual:
+2. Activate the virtual environment:
 - Windows: `venv\Scripts\activate`
 - Linux/Mac: `source venv/bin/activate`
 
-3. Instala las dependencias:
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Configura las variables de entorno:
-- Copia `.env.example` a `.env`
-- Edita `.env` con tus credenciales de Microsoft Foundry:
-  - `AZURE_OPENAI_ENDPOINT`: URL de tu endpoint de Azure OpenAI
-  - `AZURE_OPENAI_API_KEY`: Tu clave API
-  - `AZURE_OPENAI_API_VERSION`: Versión de la API (por defecto: 2024-10-01-preview)
-  - `MODEL_NAME`: Nombre del modelo (por defecto: gpt-realtime)
+4. Configure environment variables:
+- Copy `.env.example` to `.env`
+- Edit `.env` with your Microsoft Foundry credentials:
+  - `AZURE_OPENAI_ENDPOINT`: URL of your Azure OpenAI endpoint
+  - `AZURE_OPENAI_API_KEY`: Your API key
+  - `AZURE_OPENAI_API_VERSION`: API version (default: 2024-10-01-preview)
+  - `MODEL_NAME`: Model name (default: gpt-realtime)
 
-5. Ejecuta el servidor:
+5. Run the server:
 ```bash
 python main.py
 ```
 
-O con uvicorn directamente:
+Or with uvicorn directly:
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-El servidor estará disponible en `http://localhost:8000`
+The server will be available at `http://localhost:8000`
 
 ## Endpoints
 
-- `GET /`: Endpoint de salud
-- `GET /health`: Estado detallado del servidor
-- `WebSocket /ws`: Endpoint para conversación de voz en tiempo real
+- `GET /`: Health check endpoint
+- `GET /health`: Detailed server status
+- `WebSocket /ws`: Real-time voice conversation endpoint
 
+## Features
+
+- Real-time WebSocket communication
+- Audio processing (PCM16 format at 24kHz)
+- Integration with GPT Realtime model
+- Transcription using Whisper-1
+- Error handling and connection management
+
+## Technical Details
+
+- **Framework**: FastAPI
+- **WebSocket**: Native WebSocket support for real-time communication
+- **Audio Format**: PCM16 at 24kHz
+- **Model**: GPT Realtime deployed on Microsoft Foundry
+- **Transcription**: Whisper-1
+
+## Troubleshooting
+
+### Connection Issues
+- Verify that the `.env` file contains correct credentials
+- Check that Microsoft Foundry endpoint is accessible
+- Ensure the model name matches your deployment
+
+### Audio Processing Errors
+- Verify audio format is PCM16 at 24kHz
+- Check WebSocket connection stability
+- Review server logs for detailed error messages
