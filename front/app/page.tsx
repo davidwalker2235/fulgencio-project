@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./hooks/useAuth";
 import VoiceConversation from "./components/VoiceConversation";
-import VideoLoop from "./components/VideoLoop";
 
 export default function Home() {
   const router = useRouter();
@@ -25,7 +24,6 @@ export default function Home() {
   return (
     <div className="relative w-full h-screen">
       <VoiceConversation />
-      <VideoLoop />
     </div>
   );
 }

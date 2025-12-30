@@ -16,6 +16,7 @@ interface UseVoiceConversationReturn {
   transcription: Message[];
   error: string;
   connectionStatus: ConnectionStatus;
+  isSpeaking: boolean;
   startConversation: () => Promise<void>;
   stopConversation: (transcripción: Message[]) => void;
   toggleConversation: (transcripción: Message[]) => void;
@@ -32,6 +33,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const [error, setError] = useState<string>("");
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("Disconnected");
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const {
     connect,
@@ -50,12 +52,30 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const isUserSpeakingRef = useRef<boolean>(false);
   const isInterruptedRef = useRef<boolean>(false);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Monitorear el estado del audio para actualizar isSpeaking
+  useEffect(() => {
+    audioCheckIntervalRef.current = setInterval(() => {
+      const hasAudio = hasActiveAudio();
+      setIsSpeaking(hasAudio);
+    }, 100); // Verificar cada 100ms
+
+    return () => {
+      if (audioCheckIntervalRef.current) {
+        clearInterval(audioCheckIntervalRef.current);
+      }
+    };
+  }, [hasActiveAudio]);
 
   // Limpiar recursos al desmontar
   useEffect(() => {
     return () => {
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
+      }
+      if (audioCheckIntervalRef.current) {
+        clearInterval(audioCheckIntervalRef.current);
       }
       // Detener grabación y desconectar
       stopRecording();
@@ -464,6 +484,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     transcription,
     error,
     connectionStatus,
+    isSpeaking,
     startConversation,
     stopConversation,
     toggleConversation,

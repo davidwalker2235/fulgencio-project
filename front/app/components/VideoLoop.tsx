@@ -1,29 +1,60 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
+import { ConnectionStatus } from "../types";
 
-const videos = ["/animations/idle_1.mp4", "/animations/idle_2.mp4"];
+interface VideoLoopProps {
+  connectionStatus: ConnectionStatus;
+  isSpeaking: boolean;
+}
 
-export default function VideoLoop() {
+const idleVideos = ["/animations/idle_1.mp4", "/animations/idle_2.mp4"];
+const speakVideos = ["/animations/speak_1.mp4", "/animations/speak_2.mp4"];
+
+export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopProps) {
   const video1Ref = useRef<HTMLVideoElement>(null);
   const video2Ref = useRef<HTMLVideoElement>(null);
   const [activeVideo, setActiveVideo] = useState<1 | 2>(1);
   const [video1Opacity, setVideo1Opacity] = useState(1);
   const [video2Opacity, setVideo2Opacity] = useState(0);
+  const [currentMode, setCurrentMode] = useState<"idle-loop" | "idle-single" | "speak-loop">("idle-loop");
 
-  // Inicializar ambos videos
+  // Determinar qué modo de animación usar
+  const getCurrentMode = (): "idle-loop" | "idle-single" | "speak-loop" => {
+    if (connectionStatus === "Disconnected") {
+      return "idle-loop";
+    } else if (connectionStatus === "Connected" && isSpeaking) {
+      return "speak-loop";
+    } else {
+      return "idle-single";
+    }
+  };
+
+  // Obtener los videos según el modo actual
+  const getVideosForMode = (mode: "idle-loop" | "idle-single" | "speak-loop"): string[] => {
+    if (mode === "speak-loop") {
+      return speakVideos;
+    }
+    return idleVideos;
+  };
+
+  // Inicializar videos al montar
   useEffect(() => {
     const video1 = video1Ref.current;
     const video2 = video2Ref.current;
     if (!video1 || !video2) return;
 
-    // Cargar ambos videos
+    const initialMode = getCurrentMode();
+    setCurrentMode(initialMode);
+    const videos = getVideosForMode(initialMode);
+
+    // Cargar videos iniciales
     video1.src = videos[0];
     video2.src = videos[1];
     video1.load();
     video2.load();
 
-    // Reproducir el primer video cuando esté listo
+    // Reproducir el primero cuando esté listo
     const handleVideo1CanPlay = () => {
       video1.play().catch((error) => {
         if (error.name !== "AbortError") {
@@ -39,12 +70,77 @@ export default function VideoLoop() {
     };
   }, []);
 
+  // Efecto para cambiar el modo cuando cambian las props
+  useEffect(() => {
+    const newMode = getCurrentMode();
+    const video1 = video1Ref.current;
+    const video2 = video2Ref.current;
+    if (!video1 || !video2) return;
+
+    // Si el modo cambió, actualizar los videos
+    if (newMode !== currentMode) {
+      const videos = getVideosForMode(newMode);
+      setCurrentMode(newMode);
+
+      // Si es modo single (idle_1 solo), solo usar video1
+      if (newMode === "idle-single") {
+        video1.src = videos[0];
+        video1.load();
+        // Ocultar video2
+        setVideo2Opacity(0);
+        setVideo1Opacity(1);
+        setActiveVideo(1);
+        video1.play().catch((error) => {
+          if (error.name !== "AbortError") {
+            console.error("Error al reproducir video 1:", error);
+          }
+        });
+      } else {
+        // Modo loop: usar ambos videos
+        video1.src = videos[0];
+        video2.src = videos[1];
+        video1.load();
+        video2.load();
+        // Reproducir el primero
+        setVideo1Opacity(1);
+        setVideo2Opacity(0);
+        setActiveVideo(1);
+        video1.play().catch((error) => {
+          if (error.name !== "AbortError") {
+            console.error("Error al reproducir video 1:", error);
+          }
+        });
+      }
+    }
+  }, [connectionStatus, isSpeaking, currentMode]);
+
   // Manejar el final de los videos y hacer transición
   useEffect(() => {
     const video1 = video1Ref.current;
     const video2 = video2Ref.current;
     if (!video1 || !video2) return;
 
+    const mode = currentMode;
+
+    // Si es modo single, hacer loop del mismo video
+    if (mode === "idle-single") {
+      const handleVideo1End = () => {
+        video1.currentTime = 0;
+        video1.play().catch((error) => {
+          if (error.name !== "AbortError") {
+            console.error("Error al reproducir video 1:", error);
+          }
+        });
+      };
+
+      video1.addEventListener("ended", handleVideo1End);
+
+      return () => {
+        video1.removeEventListener("ended", handleVideo1End);
+      };
+    }
+
+    // Modo loop: alternar entre dos videos
     const handleVideo1End = () => {
       // Pre-cargar y reproducir video 2
       video2.currentTime = 0;
@@ -105,10 +201,10 @@ export default function VideoLoop() {
       video1.removeEventListener("timeupdate", handleVideo1TimeUpdate);
       video2.removeEventListener("timeupdate", handleVideo2TimeUpdate);
     };
-  }, []);
+  }, [currentMode]);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full min-h-screen">
       <video
         ref={video1Ref}
         className="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
