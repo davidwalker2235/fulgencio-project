@@ -6,6 +6,7 @@ import ConnectionStatus from "./ConnectionStatus";
 import ErrorDisplay from "./ErrorDisplay";
 import AnimatedFace from "./AnimatedFace";
 import FaceMorphTargets from './face/FaceMorphTargets';
+import VideoLoop from "./VideoLoop";
 
 export default function VoiceConversation() {
   const {
@@ -18,11 +19,13 @@ export default function VoiceConversation() {
   } = useVoiceConversation();
 
   return (
-    <div className="relative min-h-screen bg-zinc-50 dark:bg-black">
-      <ConnectionStatus status={connectionStatus} />
-      <div className="flex justify-center items-center">
-        <AnimatedFace />
+    <div className="relative bg-zinc-50 dark:bg-black">
+      <div className="fixed top-0 left-0 left-0 z-10 flex flex-col items-center p-8 pointer-events-none">
+        <ConnectionStatus status={connectionStatus} />
       </div>
+      {/* <div className="flex justify-center items-center">
+        <AnimatedFace />
+      </div> */}
       {/* <div className="fixed inset-0 w-full h-full z-0">
         <FaceMorphTargets />
       </div> */}

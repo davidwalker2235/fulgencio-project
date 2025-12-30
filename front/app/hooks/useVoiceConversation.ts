@@ -31,7 +31,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const [transcription, setTranscription] = useState<Message[]>([]);
   const [error, setError] = useState<string>("");
   const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>("Desconectado");
+    useState<ConnectionStatus>("Disconnected");
 
   const {
     connect,
@@ -133,7 +133,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const startConversation = useCallback(async () => {
     try {
       setError("");
-      setConnectionStatus("Conectando");
+      setConnectionStatus("Connecting");
 
       // Configurar handlers de mensajes WebSocket ANTES de conectar
       // Los handlers se guardarán y se aplicarán cuando se cree el servicio
@@ -341,7 +341,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
 
       onMessage("error", (data: WebSocketMessage) => {
         setError((data.message as string) || "Error desconocido");
-        setConnectionStatus("Desconectado");
+        setConnectionStatus("Disconnected");
       });
 
       // Configurar handlers de conexión ANTES de conectar
@@ -350,7 +350,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         onOpen: () => {
           console.log("✅ WebSocket conectado - actualizando estado");
           setIsConnected(true);
-          setConnectionStatus("Conectado");
+          setConnectionStatus("Connected");
           setIsRecording(true);
 
           // Resetear estados
@@ -365,13 +365,13 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         onClose: () => {
           console.log("❌ WebSocket cerrado");
           setIsConnected(false);
-          setConnectionStatus("Desconectado");
+          setConnectionStatus("Disconnected");
           setIsRecording(false);
         },
         onError: (err: Error) => {
           console.error("❌ Error en WebSocket:", err);
           setError(err.message);
-          setConnectionStatus("Desconectado");
+          setConnectionStatus("Disconnected");
         },
       });
 
@@ -387,7 +387,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           ? err.message
           : "Error al acceder al micrófono o conectar con el servidor"
       );
-      setConnectionStatus("Desconectado");
+      setConnectionStatus("Disconnected");
     }
   }, [
     connect,
@@ -439,7 +439,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     // Resetear estados
     setIsRecording(false);
     setIsConnected(false);
-    setConnectionStatus("Desconectado");
+    setConnectionStatus("Disconnected");
     currentResponseIdRef.current = null;
     isUserSpeakingRef.current = false;
     setTranscription([]);

@@ -4,7 +4,7 @@ export interface Message {
   timestamp: Date;
 }
 
-export type ConnectionStatus = "Desconectado" | "Conectando" | "Conectado";
+export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected";
 
 export interface WebSocketMessage {
   type: string;

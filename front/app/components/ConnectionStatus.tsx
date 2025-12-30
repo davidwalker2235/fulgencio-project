@@ -6,16 +6,13 @@ interface ConnectionStatusProps {
 
 export default function ConnectionStatus({ status }: ConnectionStatusProps) {
   return (
-    <div className="bg-white dark:bg-zinc-900 p-4 rounded-lg shadow">
-      <h2 className="text-xl font-semibold mb-2 text-black dark:text-zinc-50">
-        Estado de Conexión
-      </h2>
+    <div className="bg-transparent p-4 rounded-lg shadow">
       <div className="flex items-center gap-2">
         <div
           className={`w-3 h-3 rounded-full ${
-            status === "Conectado"
+            status === "Connected"
               ? "bg-green-500"
-              : status === "Conectando"
+              : status === "Connecting"
               ? "bg-yellow-500"
               : "bg-red-500"
           }`}
