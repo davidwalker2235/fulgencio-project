@@ -3,8 +3,9 @@
 import { useVoiceConversation } from "../hooks/useVoiceConversation";
 import ConversationButton from "./ConversationButton";
 import ConnectionStatus from "./ConnectionStatus";
-import Transcription from "./Transcription";
 import ErrorDisplay from "./ErrorDisplay";
+import AnimatedFace from "./AnimatedFace";
+import FaceMorphTargets from './face/FaceMorphTargets';
 
 export default function VoiceConversation() {
   const {
@@ -17,24 +18,24 @@ export default function VoiceConversation() {
   } = useVoiceConversation();
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-8 bg-zinc-50 dark:bg-black">
-      <main className="w-full max-w-4xl space-y-6">
-        <h1 className="text-4xl font-bold text-center text-black dark:text-zinc-50 mb-8">
-          Conversación de Voz con IA
-        </h1>
-
-        <ConversationButton
-          isRecording={isRecording}
-          connectionStatus={connectionStatus}
-          onToggle={() =>toggleConversation(transcription)}
-        />
-
-        <ConnectionStatus status={connectionStatus} />
-
-        <Transcription messages={transcription} />
-
-        <ErrorDisplay error={error} onClose={clearError} />
-      </main>
+    <div className="relative min-h-screen bg-zinc-50 dark:bg-black">
+      <ConnectionStatus status={connectionStatus} />
+      <div className="flex justify-center items-center">
+        <AnimatedFace />
+      </div>
+      {/* <div className="fixed inset-0 w-full h-full z-0">
+        <FaceMorphTargets />
+      </div> */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center p-8 pointer-events-none">
+        <div className="w-full max-w-4xl space-y-4 pointer-events-auto">
+          <ConversationButton
+            isRecording={isRecording}
+            connectionStatus={connectionStatus}
+            onToggle={() =>toggleConversation(transcription)}
+          />
+          <ErrorDisplay error={error} onClose={clearError} />
+        </div>
+      </div>
     </div>
   );
 }
