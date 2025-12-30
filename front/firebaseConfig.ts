@@ -4,14 +4,14 @@ import { getMessaging, onMessage } from "firebase/messaging";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDr61gnqvK8C0QV76M7bA-q0DltMiqpHG0",
-  authDomain: "fulgencio-db.firebaseapp.com",
-  databaseURL: "https://fulgencio-db-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "fulgencio-db",
-  storageBucket: "fulgencio-db.firebasestorage.app",
-  messagingSenderId: "926935150095",
-  appId: "1:926935150095:web:ee66f4bae895126a1d3d7a",
-  measurementId: "G-JXD0HP9L1Y"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || ""
 };
 
 // Initialize Firebase

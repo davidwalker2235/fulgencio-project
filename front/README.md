@@ -201,7 +201,32 @@ The application uses Tailwind CSS for styling:
 
 ## Environment Variables
 
-No environment variables are required for the frontend. Firebase configuration is hardcoded in `firebaseConfig.ts`.
+Firebase configuration is now managed through environment variables to keep credentials secure.
+
+### Local Development
+
+1. Copy the example file:
+```bash
+cp .env.local.example .env.local
+```
+
+2. Edit `.env.local` with your Firebase credentials (this file is gitignored and won't be committed).
+
+The `.env.local` file should contain:
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=your-api-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-auth-domain
+NEXT_PUBLIC_FIREBASE_DATABASE_URL=your-database-url
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-storage-bucket
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
+NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
+```
+
+### Production
+
+Firebase credentials are provided through GitHub Secrets during the build process. See `GUIA_FIREBASE_SECRETS.md` for detailed instructions.
 
 ## Troubleshooting
 
