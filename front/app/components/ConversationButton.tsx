@@ -15,14 +15,14 @@ export default function ConversationButton({
     <div className="flex justify-center">
       <button
         onClick={onToggle}
-        disabled={connectionStatus === "Conectando"}
+        disabled={connectionStatus === "Connecting"}
         className={`px-8 py-4 rounded-full text-lg font-semibold transition-all ${
           isRecording
             ? "bg-red-500 hover:bg-red-600 text-white"
             : "bg-blue-500 hover:bg-blue-600 text-white"
         } disabled:opacity-50 disabled:cursor-not-allowed`}
       >
-        {connectionStatus === "Conectando"
+        {connectionStatus === "Connecting"
           ? "Conectando..."
           : isRecording
           ? "Detener Conversación"
