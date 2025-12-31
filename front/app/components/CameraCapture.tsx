@@ -30,6 +30,7 @@ export default function CameraCapture({
 
   useEffect(() => {
     if (isOpen && photoState === "takingPhoto" && !photo) {
+      // Iniciar la cámara solo si no hay foto
       startCamera();
       // Trigger animation
       setIsAnimating(true);
@@ -85,11 +86,13 @@ export default function CameraCapture({
         stopCamera();
       }
     } else if (photoState === "takingPhoto" && photo) {
-      // Reset photo when taking photo again
+      // Reset photo when taking photo again - esto permite que la cámara se reinicie
       setPhoto(null);
       if (onPhotoReady) {
         onPhotoReady(null);
       }
+      // Reiniciar la cámara cuando se resetea la foto
+      startCamera();
     }
   }, [photoState, photo, onPhotoReady]);
 

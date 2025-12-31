@@ -43,7 +43,7 @@ export default function ConversationButton({
     );
   }
 
-  // Si ya se tomó la foto, mostrar botones de enviar/repetir
+  // Si ya se tomó la foto, mostrar botones de enviar/repetir/cancelar
   if (photoState === "photoTaken") {
     return (
       <div className="flex justify-center gap-4">
@@ -58,6 +58,12 @@ export default function ConversationButton({
           className="px-8 py-4 rounded-full text-lg font-semibold transition-all bg-yellow-500 hover:bg-yellow-600 text-white"
         >
           Take photo again
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-8 py-4 rounded-full text-lg font-semibold transition-all bg-gray-500 hover:bg-gray-600 text-white"
+        >
+          Cancel
         </button>
       </div>
     );

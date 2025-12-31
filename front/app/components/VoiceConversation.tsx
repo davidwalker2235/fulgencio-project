@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useVoiceConversation } from "../hooks/useVoiceConversation";
 import ConversationButton from "./ConversationButton";
 import ConnectionStatus from "./ConnectionStatus";
@@ -12,6 +12,7 @@ import Subtitles from "./Subtitles";
 import CameraCapture from "./CameraCapture";
 import { PhotoState } from "../types";
 import { FirebaseService } from "../services/firebaseService";
+import { useFirebase } from "../hooks/useFirebase";
 
 export default function VoiceConversation() {
   const {
@@ -24,52 +25,111 @@ export default function VoiceConversation() {
     clearError,
   } = useVoiceConversation();
 
+  const { subscribe, write } = useFirebase();
   const [photoState, setPhotoState] = useState<PhotoState>("idle");
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [currentPhoto, setCurrentPhoto] = useState<string | null>(null);
+  const photoStateRef = useRef<PhotoState>("idle");
 
-  const handleStartTakingPhoto = () => {
-    setPhotoState("takingPhoto");
-    setIsCameraOpen(true);
+  // Mantener la referencia actualizada
+  useEffect(() => {
+    photoStateRef.current = photoState;
+  }, [photoState]);
+
+  // Obtener userId del localStorage
+  const userId = useMemo(() => {
+    try {
+      const savedCredentials = localStorage.getItem("savedCredentials");
+      if (savedCredentials) {
+        const credentials = JSON.parse(savedCredentials);
+        return credentials.user;
+      }
+    } catch (error) {
+      console.error("Error obteniendo userId:", error);
+    }
+    return null;
+  }, []);
+
+  // Suscribirse al nodo status en Firebase
+  useEffect(() => {
+    const statusPath = `status`;
+    const unsubscribe = subscribe<PhotoState>(statusPath, (status) => {
+      if (status) {
+        // Si Firebase cambia a idle, resetear todo (incluso si estamos en photoTaken)
+        if (status === "idle") {
+          setPhotoState("idle");
+          setCurrentPhoto(null);
+          // Esperar a que termine la animación antes de cerrar
+          setTimeout(() => {
+            setIsCameraOpen(false);
+          }, 400);
+        } else if (status === "takingPhoto") {
+          // Solo actualizar si no estamos en estado photoTaken (estado temporal)
+          // Esto permite que el estado photoTaken persista hasta que se cancele o envíe
+          if (photoStateRef.current !== "photoTaken") {
+            setPhotoState("takingPhoto");
+            setIsCameraOpen(true);
+          }
+        }
+      } else {
+        // Si no hay estado, establecer como idle
+        setPhotoState("idle");
+        setIsCameraOpen(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [subscribe]);
+
+  const handleStartTakingPhoto = async () => {
+    try {
+      await write("status", "takingPhoto");
+    } catch (error) {
+      console.error("Error escribiendo status en Firebase:", error);
+    }
   };
 
   const handleTakePhoto = () => {
+    // El estado photoTaken se maneja localmente ya que es temporal
     setPhotoState("photoTaken");
   };
 
-  const handleCancel = () => {
-    setIsCameraOpen(false);
-    // Esperar a que termine la animación antes de resetear el estado
-    setTimeout(() => {
-      setPhotoState("idle");
-      setCurrentPhoto(null);
-    }, 400);
+  const handleCancel = async () => {
+    try {
+      await write("status", "idle");
+    } catch (error) {
+      console.error("Error escribiendo status en Firebase:", error);
+    }
   };
 
-  const handleTakePhotoAgain = () => {
+  const handleTakePhotoAgain = async () => {
+    // Resetear el estado local primero para que la cámara se reinicie
     setPhotoState("takingPhoto");
+    setCurrentPhoto(null);
+    // Luego escribir en Firebase para mantener la sincronización
+    try {
+      await write("status", "takingPhoto");
+    } catch (error) {
+      console.error("Error escribiendo status en Firebase:", error);
+    }
   };
 
   const handleSend = async () => {
     if (currentPhoto) {
       await handlePhotoTaken(currentPhoto);
     }
-    setIsCameraOpen(false);
-    // Esperar a que termine la animación antes de resetear el estado
-    setTimeout(() => {
-      setPhotoState("idle");
-      setCurrentPhoto(null);
-    }, 400);
+    try {
+      await write("status", "idle");
+    } catch (error) {
+      console.error("Error escribiendo status en Firebase:", error);
+    }
   };
 
   const handlePhotoTaken = async (photoBase64: string) => {
     try {
-      // Obtener el usuario desde localStorage
-      const savedCredentials = localStorage.getItem("savedCredentials");
-      if (savedCredentials) {
-        const credentials = JSON.parse(savedCredentials);
-        const userId = credentials.user;
-        
+      if (userId) {
         // Enviar foto a Firebase
         await FirebaseService.write(`user/${userId}/photo`, {
           photo: photoBase64,
