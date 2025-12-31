@@ -15,7 +15,7 @@ import EmailInput from "./EmailInput";
 import { PhotoState } from "../types";
 import { FirebaseService } from "../services/firebaseService";
 import { useFirebase } from "../hooks/useFirebase";
-import { PHOTO_AUTHORIZATION_PROMPT } from "../constants/aiPrompts";
+import { PHOTO_AUTHORIZATION_PROMPT, PHOTO_DISAGREE_PROMPT } from "../constants/aiPrompts";
 
 export default function VoiceConversation() {
   const {
@@ -137,6 +137,16 @@ export default function VoiceConversation() {
     } catch (error) {
       console.error("Error escribiendo status en Firebase:", error);
     }
+  };
+
+  const handleDisagree = async () => {
+    // Enviar prompt de desacuerdo a la IA si hay conexión activa
+    if (connectionStatus === "Connected") {
+      sendTextMessage(PHOTO_DISAGREE_PROMPT);
+      console.log("📤 Mensaje de desacuerdo enviado a la IA");
+    }
+    // Después de enviar el mensaje, cancelar y volver a idle
+    await handleCancel();
   };
 
   const handleTakePhotoAgain = async () => {
@@ -275,7 +285,7 @@ export default function VoiceConversation() {
                 handleEmailSubmit(currentEmailInput.trim());
               }
             }}
-            onDisagree={handleCancel}
+            onDisagree={handleDisagree}
           />
           <ErrorDisplay error={error} onClose={clearError} />
         </div>

@@ -115,10 +115,10 @@ export default function ConversationButton({
         } disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         {connectionStatus === "Connecting"
-          ? "Conectando..."
+          ? "Connecting..."
           : isRecording
-          ? "Detener Conversación"
-          : "Iniciar Conversación"}
+          ? "Stop Conversation"
+          : "Start Conversation"}
       </button>
       {onStartTakingPhoto && (
         <button
@@ -126,7 +126,7 @@ export default function ConversationButton({
           disabled={connectionStatus === "Connecting"}
           className="px-8 py-4 rounded-full text-lg font-semibold transition-all bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          📷 Tomar Foto
+          📷 Take Photo
         </button>
       )}
     </div>
