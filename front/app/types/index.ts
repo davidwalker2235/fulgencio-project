@@ -5,6 +5,7 @@ export interface Message {
 }
 
 export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected";
+export type PhotoState = "idle" | "takingPhoto" | "photoTaken";
 
 export interface WebSocketMessage {
   type: string;
