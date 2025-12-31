@@ -17,6 +17,7 @@ interface UseVoiceConversationReturn {
   error: string;
   connectionStatus: ConnectionStatus;
   isSpeaking: boolean;
+  activeUserId: string | null;
   startConversation: () => Promise<void>;
   stopConversation: (transcripción: Message[]) => void;
   toggleConversation: (transcripción: Message[]) => void;
@@ -53,6 +54,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const isInterruptedRef = useRef<boolean>(false);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
 
   // Monitorear el estado del audio para actualizar isSpeaking
   useEffect(() => {
@@ -150,10 +152,23 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     [send, wsIsConnected, stopAllAudio, hasActiveAudio]
   );
 
+  // Función para generar un ID de usuario único
+  const generateUserId = useCallback((): string => {
+    // Generar ID único usando timestamp y random
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15);
+    return `user_${timestamp}_${random}`;
+  }, []);
+
   const startConversation = useCallback(async () => {
     try {
       setError("");
       setConnectionStatus("Connecting");
+
+      // Generar ID único para este usuario/sesión
+      const userId = generateUserId();
+      setActiveUserId(userId);
+      console.log("🆔 ID de usuario generado:", userId);
 
       // Configurar handlers de mensajes WebSocket ANTES de conectar
       // Los handlers se guardarán y se aplicarán cuando se cree el servicio
@@ -422,6 +437,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     wsIsConnected,
     audioIsRecording,
     hasActiveAudio,
+    generateUserId,
   ]);
 
   const stopConversation = useCallback((transcription: Message[]) => {
@@ -451,10 +467,17 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       silenceTimerRef.current = null;
     }
 
-    // Guardar la transcripción en la base de datos
-    const timestamp = Date.now();
-    write(`transcriptions/${timestamp}`, transcription);
-    console.log("Transcripción guardada en la base de datos");
+    // Guardar la transcripción en la base de datos usando el ID del usuario activo
+    if (activeUserId) {
+      const timestamp = Date.now();
+      write(`users/${activeUserId}/transcriptions/${timestamp}`, transcription);
+      console.log(`Transcripción guardada en users/${activeUserId}/transcriptions/${timestamp}`);
+      
+      // Limpiar el ID del usuario activo después de guardar
+      setActiveUserId(null);
+    } else {
+      console.warn("⚠️ No hay ID de usuario activo, no se guardará la transcripción");
+    }
 
     // Resetear estados
     setIsRecording(false);
@@ -463,7 +486,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     currentResponseIdRef.current = null;
     isUserSpeakingRef.current = false;
     setTranscription([]);
-  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected]);
+  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, activeUserId]);
 
   const toggleConversation = useCallback((transcription: Message[]) => {
     const aaa = transcription
@@ -485,6 +508,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     error,
     connectionStatus,
     isSpeaking,
+    activeUserId,
     startConversation,
     stopConversation,
     toggleConversation,

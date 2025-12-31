@@ -21,6 +21,7 @@ export default function VoiceConversation() {
     error,
     connectionStatus,
     isSpeaking,
+    activeUserId,
     toggleConversation,
     clearError,
   } = useVoiceConversation();
@@ -129,13 +130,24 @@ export default function VoiceConversation() {
 
   const handlePhotoTaken = async (photoBase64: string) => {
     try {
-      if (userId) {
-        // Enviar foto a Firebase
-        await FirebaseService.write(`user/${userId}/photo`, {
-          photo: photoBase64,
-          timestamp: new Date().toISOString(),
-        });
+      // Usar el ID del usuario activo de la conversación si existe
+      // Si no hay conversación activa, generar un ID nuevo para esta foto
+      let userIdToUse = activeUserId;
+      
+      if (!userIdToUse) {
+        // Generar ID único si no hay uno activo
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 15);
+        userIdToUse = `user_${timestamp}_${random}`;
+        console.log("🆔 ID generado para foto (sin conversación activa):", userIdToUse);
       }
+      
+      // Enviar foto a Firebase en la estructura users/{userId}/photo
+      await FirebaseService.write(`users/${userIdToUse}/photo`, {
+        photo: photoBase64,
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`📸 Foto guardada en users/${userIdToUse}/photo`);
     } catch (error) {
       console.error("Error sending photo to Firebase:", error);
     }
