@@ -7,6 +7,7 @@ import ErrorDisplay from "./ErrorDisplay";
 import AnimatedFace from "./AnimatedFace";
 import FaceMorphTargets from './face/FaceMorphTargets';
 import VideoLoop from "./VideoLoop";
+import Subtitles from "./Subtitles";
 
 export default function VoiceConversation() {
   const {
@@ -35,6 +36,7 @@ export default function VoiceConversation() {
       </div> */}
       <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <div className="w-full max-w-4xl space-y-4 pointer-events-auto">
+          <Subtitles messages={transcription} isSpeaking={isSpeaking} />
           <ConversationButton
             isRecording={isRecording}
             connectionStatus={connectionStatus}
