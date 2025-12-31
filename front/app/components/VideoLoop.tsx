@@ -27,6 +27,7 @@ const sortVideosByNumber = (videos: string[]): string[] => {
 };
 
 export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopProps) {
+  const backgroundVideoRef = useRef<HTMLVideoElement>(null);
   const video1Ref = useRef<HTMLVideoElement>(null);
   const video2Ref = useRef<HTMLVideoElement>(null);
   const [activeVideo, setActiveVideo] = useState<1 | 2>(1);
@@ -60,6 +61,42 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
   const getNextVideoIndex = (currentIndex: number, totalVideos: number): number => {
     return (currentIndex + 1) % totalVideos;
   };
+
+  // Inicializar video de fondo al montar
+  useEffect(() => {
+    const backgroundVideo = backgroundVideoRef.current;
+    if (!backgroundVideo) return;
+
+    backgroundVideo.src = "/animations/video_background.mp4";
+    backgroundVideo.load();
+
+    const handleBackgroundCanPlay = () => {
+      backgroundVideo.play().catch((error) => {
+        if (error.name !== "AbortError") {
+          console.error("Error al reproducir video de fondo:", error);
+        }
+      });
+    };
+
+    backgroundVideo.addEventListener("canplay", handleBackgroundCanPlay);
+
+    // Asegurar que el video se reinicie cuando termine (loop)
+    const handleBackgroundEnd = () => {
+      backgroundVideo.currentTime = 0;
+      backgroundVideo.play().catch((error) => {
+        if (error.name !== "AbortError") {
+          console.error("Error al reproducir video de fondo:", error);
+        }
+      });
+    };
+
+    backgroundVideo.addEventListener("ended", handleBackgroundEnd);
+
+    return () => {
+      backgroundVideo.removeEventListener("canplay", handleBackgroundCanPlay);
+      backgroundVideo.removeEventListener("ended", handleBackgroundEnd);
+    };
+  }, []);
 
   // Inicializar videos al montar
   useEffect(() => {
@@ -316,6 +353,17 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
 
   return (
     <div className="relative w-full h-full min-h-screen">
+      {/* Video de fondo fijo en loop continuo */}
+      <video
+        ref={backgroundVideoRef}
+        className="absolute inset-0 w-full h-full object-contain"
+        style={{ zIndex: 0 }}
+        playsInline
+        muted
+        loop={true}
+        autoPlay
+      />
+      {/* Videos del loop en capas superiores */}
       <video
         ref={video1Ref}
         className="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
