@@ -6,9 +6,10 @@ import { Message } from "../types";
 interface SubtitlesProps {
   messages: Message[];
   isSpeaking: boolean;
+  isRecording: boolean;
 }
 
-export default function Subtitles({ messages, isSpeaking }: SubtitlesProps) {
+export default function Subtitles({ messages, isSpeaking, isRecording }: SubtitlesProps) {
   const [visibleText, setVisibleText] = useState<string>("");
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,6 +69,20 @@ export default function Subtitles({ messages, isSpeaking }: SubtitlesProps) {
       }
     };
   }, [isSpeaking, visibleText]);
+
+  // Si se detiene la conversación, ocultar subtítulos inmediatamente
+  useEffect(() => {
+    if (!isRecording) {
+      // Limpiar timer si existe
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      // Ocultar subtítulos inmediatamente
+      setIsVisible(false);
+      setVisibleText("");
+    }
+  }, [isRecording]);
 
   // Limpiar timer al desmontar
   useEffect(() => {
