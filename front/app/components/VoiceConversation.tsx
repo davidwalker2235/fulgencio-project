@@ -11,6 +11,7 @@ import VideoLoop from "./VideoLoop";
 import Subtitles from "./Subtitles";
 import CameraCapture from "./CameraCapture";
 import TextInput from "./TextInput";
+import EmailInput from "./EmailInput";
 import { PhotoState } from "../types";
 import { FirebaseService } from "../services/firebaseService";
 import { useFirebase } from "../hooks/useFirebase";
@@ -33,6 +34,10 @@ export default function VoiceConversation() {
   const [photoState, setPhotoState] = useState<PhotoState>("idle");
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [currentPhoto, setCurrentPhoto] = useState<string | null>(null);
+  const [emailAccepted, setEmailAccepted] = useState(false);
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [currentEmailInput, setCurrentEmailInput] = useState<string>("");
+  const [isValidEmail, setIsValidEmail] = useState(false);
   const photoStateRef = useRef<PhotoState>("idle");
   const previousStatusRef = useRef<PhotoState | null>(null);
   const messageSentRef = useRef<boolean>(false);
@@ -65,6 +70,10 @@ export default function VoiceConversation() {
         if (status === "idle") {
           setPhotoState("idle");
           setCurrentPhoto(null);
+          setEmailAccepted(false);
+          setUserEmail("");
+          setCurrentEmailInput("");
+          setIsValidEmail(false);
           previousStatusRef.current = "idle";
           messageSentRef.current = false;
           // Esperar a que termine la animación antes de cerrar
@@ -76,7 +85,7 @@ export default function VoiceConversation() {
           // Esto permite que el estado photoTaken persista hasta que se cancele o envíe
           if (photoStateRef.current !== "photoTaken") {
             setPhotoState("takingPhoto");
-            setIsCameraOpen(true);
+            // NO abrir la cámara todavía, primero necesitamos el email
             
             // Enviar mensaje automático cuando cambia a "takingPhoto" y hay conexión activa
             if (
@@ -95,6 +104,10 @@ export default function VoiceConversation() {
         // Si no hay estado, establecer como idle
         setPhotoState("idle");
         setIsCameraOpen(false);
+        setEmailAccepted(false);
+        setUserEmail("");
+        setCurrentEmailInput("");
+        setIsValidEmail(false);
         previousStatusRef.current = null;
         messageSentRef.current = false;
       }
@@ -149,6 +162,33 @@ export default function VoiceConversation() {
     }
   };
 
+  const handleEmailSubmit = async (email: string) => {
+    try {
+      // Usar el ID del usuario activo de la conversación si existe
+      // Si no hay conversación activa, generar un ID nuevo
+      let userIdToUse = activeUserId;
+      
+      if (!userIdToUse) {
+        // Generar ID único si no hay uno activo
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 15);
+        userIdToUse = `user_${timestamp}_${random}`;
+        console.log("🆔 ID generado para email (sin conversación activa):", userIdToUse);
+      }
+      
+      // Guardar email en Firebase
+      await FirebaseService.write(`users/${userIdToUse}/email`, email);
+      console.log(`📧 Email guardado en users/${userIdToUse}/email`);
+      
+      setUserEmail(email);
+      setEmailAccepted(true);
+      // Ahora sí abrir la cámara
+      setIsCameraOpen(true);
+    } catch (error) {
+      console.error("Error guardando email en Firebase:", error);
+    }
+  };
+
   const handlePhotoTaken = async (photoBase64: string) => {
     try {
       // Usar el ID del usuario activo de la conversación si existe
@@ -182,7 +222,20 @@ export default function VoiceConversation() {
       <div className="fixed top-0 left-0 left-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <ConnectionStatus status={connectionStatus} />
       </div>
-      {isCameraOpen && (
+      {/* Mostrar EmailInput cuando está en takingPhoto pero aún no se ha aceptado el email */}
+      {photoState === "takingPhoto" && !emailAccepted && (
+        <EmailInput
+          onEmailSubmit={handleEmailSubmit}
+          onCancel={handleCancel}
+          onEmailChange={(email, isValid) => {
+            setCurrentEmailInput(email);
+            setIsValidEmail(isValid);
+          }}
+          currentEmail={currentEmailInput}
+        />
+      )}
+      {/* Mostrar cámara solo después de aceptar el email */}
+      {isCameraOpen && emailAccepted && (
         <CameraCapture
           isOpen={isCameraOpen}
           onClose={handleCancel}
@@ -204,23 +257,25 @@ export default function VoiceConversation() {
       <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <div className="w-full max-w-4xl space-y-4 pointer-events-auto">
           <Subtitles messages={transcription} isSpeaking={isSpeaking} isRecording={isRecording} />
-          {connectionStatus === "Connected" && (
-            <TextInput
-              onSend={sendTextMessage}
-              disabled={isSpeaking}
-              placeholder="Escribe tu mensaje o habla..."
-            />
-          )}
           <ConversationButton
             isRecording={isRecording}
             connectionStatus={connectionStatus}
             photoState={photoState}
+            emailAccepted={emailAccepted}
+            isValidEmail={isValidEmail}
             onToggle={() => toggleConversation(transcription)}
             onStartTakingPhoto={handleStartTakingPhoto}
             onTakePhoto={handleTakePhoto}
             onCancel={handleCancel}
             onSend={handleSend}
             onTakePhotoAgain={handleTakePhotoAgain}
+            onAgree={() => {
+              // Enviar el email cuando se hace clic en Agree
+              if (isValidEmail && currentEmailInput.trim()) {
+                handleEmailSubmit(currentEmailInput.trim());
+              }
+            }}
+            onDisagree={handleCancel}
           />
           <ErrorDisplay error={error} onClose={clearError} />
         </div>
