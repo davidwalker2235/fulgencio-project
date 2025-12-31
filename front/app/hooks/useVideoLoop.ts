@@ -8,8 +8,8 @@ interface UseVideoLoopProps {
 }
 
 interface UseVideoLoopReturn {
-  video1Ref: React.RefObject<HTMLVideoElement>;
-  video2Ref: React.RefObject<HTMLVideoElement>;
+  video1Ref: React.RefObject<HTMLVideoElement | null>;
+  video2Ref: React.RefObject<HTMLVideoElement | null>;
   activeVideo: 1 | 2;
   video1Opacity: number;
   video2Opacity: number;
