@@ -14,6 +14,7 @@ import TextInput from "./TextInput";
 import { PhotoState } from "../types";
 import { FirebaseService } from "../services/firebaseService";
 import { useFirebase } from "../hooks/useFirebase";
+import { PHOTO_AUTHORIZATION_PROMPT } from "../constants/aiPrompts";
 
 export default function VoiceConversation() {
   const {
@@ -83,8 +84,7 @@ export default function VoiceConversation() {
               connectionStatus === "Connected" &&
               !messageSentRef.current
             ) {
-              const messageText = "Necesitamos la autorización de un usuario para hacerse una foto, por lo que quiero que digas una frase graciosa que explique que, debido a la ley de protección de datos, necesitamos que nos autorice a hacerse una foto escribiendo su email y que, además, le enviaremos el resultado por email, pero SOLO dime la frase, no me des más explicaciones";
-              sendTextMessage(messageText);
+              sendTextMessage(PHOTO_AUTHORIZATION_PROMPT);
               messageSentRef.current = true;
               console.log("📤 Mensaje automático enviado al cambiar a takingPhoto");
             }

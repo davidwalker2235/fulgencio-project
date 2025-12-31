@@ -43,3 +43,6 @@ export const SESSION_CONFIG = {
   },
 } as const;
 
+// Re-exportar prompts de IA para facilitar el acceso
+export * from "./aiPrompts";
+
