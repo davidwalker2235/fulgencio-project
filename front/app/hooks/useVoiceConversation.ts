@@ -22,6 +22,7 @@ interface UseVoiceConversationReturn {
   stopConversation: (transcripción: Message[]) => void;
   toggleConversation: (transcripción: Message[]) => void;
   clearError: () => void;
+  sendTextMessage: (text: string) => void;
 }
 
 /**
@@ -203,6 +204,12 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           timestamp: new Date(),
         };
         setTranscription((prev) => [...prev, userMessage]);
+      });
+
+      // Handler para cuando se completa el procesamiento de un mensaje de texto
+      onMessage("conversation.item.input_text.done", (data: WebSocketMessage) => {
+        console.log("✅ Mensaje de texto procesado:", data);
+        // El mensaje ya debería estar en la transcripción, solo confirmamos
       });
 
       onMessage("response.audio.delta", (data: WebSocketMessage) => {
@@ -501,6 +508,56 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setError("");
   }, []);
 
+  const sendTextMessage = useCallback(
+    (text: string) => {
+      if (!wsIsConnected() || !text.trim()) {
+        console.warn("No se puede enviar texto: WebSocket no conectado o texto vacío");
+        if (!wsIsConnected()) {
+          setError("No hay conexión activa. Por favor, inicia una conversación primero.");
+        }
+        return;
+      }
+
+      // Agregar mensaje del usuario a la transcripción inmediatamente
+      const userMessage: Message = {
+        role: "user",
+        content: text.trim(),
+        timestamp: new Date(),
+      };
+      setTranscription((prev) => [...prev, userMessage]);
+
+      // Enviar texto a GPT Realtime usando conversation.item.create
+      const textMessage: WebSocketMessage = {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: text.trim(),
+            },
+          ],
+        },
+      };
+
+      send(textMessage);
+      console.log("📤 Texto enviado a GPT Realtime:", text.trim());
+
+      // Solicitar respuesta después de enviar el texto
+      // Esperar un momento para que el mensaje se procese
+      setTimeout(() => {
+        if (wsIsConnected() && !currentResponseIdRef.current) {
+          send({
+            type: "response.create",
+          });
+          console.log("✅ Solicitud de respuesta enviada después de texto");
+        }
+      }, 100);
+    },
+    [send, wsIsConnected]
+  );
+
   return {
     isConnected,
     isRecording,
@@ -513,6 +570,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     stopConversation,
     toggleConversation,
     clearError,
+    sendTextMessage,
   };
 }
 

@@ -10,6 +10,7 @@ import FaceMorphTargets from './face/FaceMorphTargets';
 import VideoLoop from "./VideoLoop";
 import Subtitles from "./Subtitles";
 import CameraCapture from "./CameraCapture";
+import TextInput from "./TextInput";
 import { PhotoState } from "../types";
 import { FirebaseService } from "../services/firebaseService";
 import { useFirebase } from "../hooks/useFirebase";
@@ -24,6 +25,7 @@ export default function VoiceConversation() {
     activeUserId,
     toggleConversation,
     clearError,
+    sendTextMessage,
   } = useVoiceConversation();
 
   const { subscribe, write } = useFirebase();
@@ -31,6 +33,8 @@ export default function VoiceConversation() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [currentPhoto, setCurrentPhoto] = useState<string | null>(null);
   const photoStateRef = useRef<PhotoState>("idle");
+  const previousStatusRef = useRef<PhotoState | null>(null);
+  const messageSentRef = useRef<boolean>(false);
 
   // Mantener la referencia actualizada
   useEffect(() => {
@@ -60,6 +64,8 @@ export default function VoiceConversation() {
         if (status === "idle") {
           setPhotoState("idle");
           setCurrentPhoto(null);
+          previousStatusRef.current = "idle";
+          messageSentRef.current = false;
           // Esperar a que termine la animación antes de cerrar
           setTimeout(() => {
             setIsCameraOpen(false);
@@ -70,19 +76,34 @@ export default function VoiceConversation() {
           if (photoStateRef.current !== "photoTaken") {
             setPhotoState("takingPhoto");
             setIsCameraOpen(true);
+            
+            // Enviar mensaje automático cuando cambia a "takingPhoto" y hay conexión activa
+            if (
+              previousStatusRef.current !== "takingPhoto" &&
+              connectionStatus === "Connected" &&
+              !messageSentRef.current
+            ) {
+              const messageText = "Necesitamos la autorización de un usuario para hacerse una foto, por lo que quiero que digas una frase graciosa que explique que, debido a la ley de protección de datos, necesitamos que nos autorice a hacerse una foto escribiendo su email y que, además, le enviaremos el resultado por email, pero SOLO dime la frase, no me des más explicaciones";
+              sendTextMessage(messageText);
+              messageSentRef.current = true;
+              console.log("📤 Mensaje automático enviado al cambiar a takingPhoto");
+            }
           }
         }
+        previousStatusRef.current = status;
       } else {
         // Si no hay estado, establecer como idle
         setPhotoState("idle");
         setIsCameraOpen(false);
+        previousStatusRef.current = null;
+        messageSentRef.current = false;
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [subscribe]);
+  }, [subscribe, connectionStatus, sendTextMessage]);
 
   const handleStartTakingPhoto = async () => {
     try {
@@ -183,6 +204,13 @@ export default function VoiceConversation() {
       <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <div className="w-full max-w-4xl space-y-4 pointer-events-auto">
           <Subtitles messages={transcription} isSpeaking={isSpeaking} isRecording={isRecording} />
+          {connectionStatus === "Connected" && (
+            <TextInput
+              onSend={sendTextMessage}
+              disabled={isSpeaking}
+              placeholder="Escribe tu mensaje o habla..."
+            />
+          )}
           <ConversationButton
             isRecording={isRecording}
             connectionStatus={connectionStatus}
