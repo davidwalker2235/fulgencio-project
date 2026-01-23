@@ -45,15 +45,13 @@ export default function PhotoFormPage() {
     }
 
     setIsSubmitting(true);
-    // Aquí puedes agregar la lógica para procesar el formulario
-    // Por ejemplo, guardar en Firebase o navegar a otra página
-    console.log("Form submitted:", { fullName, email });
     
-    // Simular procesamiento
-    setTimeout(() => {
-      setIsSubmitting(false);
-      // Aquí puedes navegar a otra página o ejecutar otra acción
-    }, 500);
+    // Navegar a la pantalla de captura con los datos del formulario
+    const params = new URLSearchParams({
+      name: fullName.trim(),
+      email: email.trim(),
+    });
+    router.push(`/photo/capture?${params.toString()}`);
   };
 
   return (
