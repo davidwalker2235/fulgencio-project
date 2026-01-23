@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FirebaseService } from "../../services/firebaseService";
-import { generateUserCode } from "../../utils/generateUserCode";
+import { generateCode } from "../../utils/generateCode";
 
 export default function PhotoCapturePage() {
   const router = useRouter();
@@ -73,12 +73,12 @@ export default function PhotoCapturePage() {
   };
 
   const handleSend = async () => {
-    if (!photo) return;
+    if (!photo || !email) return;
 
     setIsLoading(true);
     try {
-      // Generar código de 5 caracteres
-      const userCode = generateUserCode();
+      // Generar código determinista basado en el email
+      const userCode = await generateCode(email);
 
       // Guardar en Firebase
       await FirebaseService.write(`users/${userCode}`, {

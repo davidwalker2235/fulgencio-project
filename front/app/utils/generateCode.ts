@@ -1,9 +1,10 @@
 /**
- * Generate a 5-letter deterministic code from an email using SHA-256 and base-26 A-Z encoding.
+ * Generate a 5-character deterministic code from an email using SHA-256 and base-36 encoding.
  * Works in both Node.js and browser environments.
+ * Same email will always generate the same code.
  *
  * @param {string} email
- * @returns {Promise<string>} 5 uppercase letters A–Z
+ * @returns {Promise<string>} 5 characters (A-Z, 0-9)
  */
 export async function generateCode(email: string): Promise<string> {
   // Step 1-2: Normalize email
@@ -50,17 +51,15 @@ export async function generateCode(email: string): Promise<string> {
   }
   let num = BigInt("0x" + hex);
 
-  // Step 5: Convert to base-26 (A-Z), 5 chars
-  const letters: string[] = [];
+  // Step 5: Convert to base-36 (A-Z, 0-9), 5 chars
+  const chars: string[] = [];
   const codeLength = 5;
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; // Base-36: A-Z and 0-9
   for (let i = 0; i < codeLength; ++i) {
-    // Use Math.floor as BigInt is not available in ES2019 environments; do not use 26n
-    // Use regular Number instead of BigInt division/modulo, for compatibility.
-    const rem = Number(num % BigInt(26)); // Always integer 0..25
-    letters.push(alphabet[rem]);
-    num = num / BigInt(26);
+    const rem = Number(num % BigInt(36)); // Always integer 0..35
+    chars.push(alphabet[rem]);
+    num = num / BigInt(36);
   }
   // The loop generates chars LSB-first, reverse for human order:
-  return letters.reverse().join("");
+  return chars.reverse().join("");
 }
