@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FirebaseService } from "../../services/firebaseService";
-import { generateCode } from "../../utils/generateCode";
 
 export default function PhotoCapturePage() {
   const router = useRouter();
@@ -77,21 +76,25 @@ export default function PhotoCapturePage() {
 
     setIsLoading(true);
     try {
-      // Generar código determinista basado en el email
-      const userCode = await generateCode(email);
+      // Obtener el siguiente número correlativo desde Firebase users
+      const usersData = await FirebaseService.read<Record<string, unknown>>("users");
+      const keys = usersData ? Object.keys(usersData) : [];
+      const numericKeys = keys.filter((k) => /^\d+$/.test(k)).map(Number);
+      const nextId = numericKeys.length === 0 ? 1 : Math.max(...numericKeys) + 1;
+      const userKey = String(nextId);
 
-      // Guardar en Firebase
-      await FirebaseService.write(`users/${userCode}`, {
+      // Guardar en Firebase con la key numérica correlativa
+      await FirebaseService.write(`users/${userKey}`, {
         fullName,
         email,
         photo: photo, // Foto en base64
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`Data saved to users/${userCode}`);
+      console.log(`Data saved to users/${userKey}`);
 
       // Navegar a la pantalla del código
-      router.push(`/photo/code?code=${userCode}`);
+      router.push(`/photo/code?code=${userKey}`);
     } catch (error) {
       console.error("Error saving to Firebase:", error);
       setIsLoading(false);
