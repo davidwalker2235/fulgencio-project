@@ -1,6 +1,5 @@
-// URL del WebSocket - puede ser configurada mediante variable de entorno
-// En producción (Azure), usa wss:// con el hostname del backend
-// En desarrollo, usa ws:// con localhost
+import { VOICE_ASSISTANT_INSTRUCTIONS } from "./aiPrompts";
+
 export const WEBSOCKET_URL = 
   process.env.NEXT_PUBLIC_WS_URL || 
   (typeof window !== "undefined" 
@@ -28,8 +27,8 @@ export const VOICE_DETECTION = {
 
 export const SESSION_CONFIG = {
   modalities: ["text", "audio"],
-  instructions: "Eres un asistente de voz amigable y útil. Responde de forma natural y conversacional.",
-  voice: "alloy",
+  instructions: VOICE_ASSISTANT_INSTRUCTIONS,
+  voice: "shimmer",
   input_audio_format: "pcm16",
   output_audio_format: "pcm16",
   input_audio_transcription: {

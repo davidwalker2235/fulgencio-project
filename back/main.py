@@ -140,8 +140,8 @@ async def handle_realtime_connection(realtime_ws, websocket):
         "type": "session.update",
         "session": {
             "modalities": ["text", "audio"],
-            "instructions": "Eres un asistente de voz amigable y útil.",
-            "voice": "alloy",
+            "instructions": "Eres un asistente de voz amigable y útil. Habla con acento español de España. Tan solo di la frase 'Hola, cual es tu número para saber quién eres, por favor'. No digas nada más",
+            "voice": "nova",
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
             "input_audio_transcription": {
