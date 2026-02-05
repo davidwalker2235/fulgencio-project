@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FirebaseService } from "../../services/firebaseService";
 
 export default function PhotoCapturePage() {
   const router = useRouter();
@@ -16,6 +15,8 @@ export default function PhotoCapturePage() {
   const streamRef = useRef<MediaStream | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [cameraError, setCameraError] = useState<string>("");
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
 
   // Iniciar cámara al montar
   useEffect(() => {
@@ -27,15 +28,31 @@ export default function PhotoCapturePage() {
 
   const startCamera = async () => {
     try {
+      setCameraError("");
+      setIsCameraStarting(true);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user" }, // Cámara frontal
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // En algunos navegadores, aunque exista `autoPlay`, conviene forzar `play()`.
+        // Si el navegador requiere gesto de usuario, capturamos el error y mostramos un CTA.
+        try {
+          await videoRef.current.play();
+        } catch (err) {
+          console.warn("No se pudo iniciar reproducción automática del vídeo:", err);
+        }
       }
     } catch (error) {
       console.error("Error accessing camera:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No se pudo acceder a la cámara. Revisa permisos y que la página esté en un contexto seguro (HTTPS o localhost).";
+      setCameraError(message);
+    } finally {
+      setIsCameraStarting(false);
     }
   };
 
@@ -76,6 +93,9 @@ export default function PhotoCapturePage() {
 
     setIsLoading(true);
     try {
+      // Import lazy para evitar que la ruta falle al cargar si Firebase no está disponible
+      // (por ejemplo, configuración incompleta). Solo lo necesitamos al enviar.
+      const { FirebaseService } = await import("../../services/firebaseService");
       // Obtener el siguiente número correlativo desde Firebase users
       const usersData = await FirebaseService.read<Record<string, unknown>>("users");
       const keys = usersData ? Object.keys(usersData) : [];
@@ -132,25 +152,50 @@ export default function PhotoCapturePage() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                {(isCameraStarting || cameraError) && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 p-4 text-center">
+                    {isCameraStarting && (
+                      <p className="text-white text-sm">Iniciando cámara…</p>
+                    )}
+                    {cameraError && (
+                      <p className="text-white text-sm break-words">
+                        {cameraError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
           {/* Buttons */}
           {!photo ? (
-            <button
-              onClick={handleShot}
-              className="w-full max-w-xs py-3 px-6 rounded-lg font-semibold text-base bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200 transition-colors"
-            >
-              Shot
-            </button>
+            <div className="w-full max-w-xs flex flex-col gap-3">
+              {(cameraError || !streamRef.current) && (
+                <button
+                  onClick={startCamera}
+                  className="w-full py-3 px-6 rounded-lg font-semibold text-base bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                >
+                  Activar cámara
+                </button>
+              )}
+              <button
+                onClick={handleShot}
+                disabled={!streamRef.current || !!cameraError || isCameraStarting}
+                className="w-full py-3 px-6 rounded-lg font-semibold text-base bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Shot
+              </button>
+            </div>
           ) : (
             <div className="w-full max-w-xs flex gap-4">
               <button

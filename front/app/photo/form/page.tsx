@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
@@ -10,6 +10,11 @@ export default function PhotoFormPage() {
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Prefetch para que el cambio a /photo/capture sea inmediato
+  useEffect(() => {
+    router.prefetch("/photo/capture");
+  }, [router]);
 
   // Validar email con regex
   const validateEmail = (emailValue: string): boolean => {
@@ -51,7 +56,21 @@ export default function PhotoFormPage() {
       name: fullName.trim(),
       email: email.trim(),
     });
-    router.push(`/photo/capture?${params.toString()}`);
+
+    // Si por cualquier motivo la navegación SPA falla (p.ej. error cargando el chunk),
+    // no dejamos el botón bloqueado para siempre.
+    const unlockTimer = window.setTimeout(() => {
+      setIsSubmitting(false);
+    }, 1500);
+
+    try {
+      router.push(`/photo/capture?${params.toString()}`);
+    } catch (err) {
+      console.error("Error navegando a /photo/capture:", err);
+      window.location.assign(`/photo/capture?${params.toString()}`);
+    } finally {
+      window.clearTimeout(unlockTimer);
+    }
   };
 
   return (
@@ -75,7 +94,7 @@ export default function PhotoFormPage() {
 
       {/* Form Container */}
       <div className="flex-1 flex flex-col items-center justify-start px-4 pb-8">
-        <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6 mt-4">
+        <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6 mt-4" noValidate>
           {/* Lorem Ipsum Text */}
           <div className="text-white text-sm sm:text-base leading-relaxed text-center px-2">
             <p>
