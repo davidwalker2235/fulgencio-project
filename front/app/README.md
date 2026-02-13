@@ -17,9 +17,7 @@ app/
 │   ├── EmailInput.tsx
 │   ├── CameraCapture.tsx
 │   ├── VideoLoop.tsx
-│   ├── AnimatedFace.tsx
-│   └── face/            # 3D face animation components
-│       └── FaceMorphTargets.tsx
+│   └── AnimatedFace.tsx
 ├── hooks/              # Custom hooks
 │   ├── useAuth.ts
 │   ├── useWebSocket.ts
@@ -179,7 +177,6 @@ All components are separated by responsibility:
 - **CameraCapture**: Camera component for taking photos
 - **VideoLoop**: Background video loop component
 - **AnimatedFace**: Animated face component (legacy)
-- **FaceMorphTargets**: 3D face morphing component using Three.js
 
 ## Constants
 

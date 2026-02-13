@@ -1,8 +1,0 @@
-{
-  "name": "nextjs-face-morph-example",
-  "version": "1.0.0",
-  "dependencies": {
-    "three": "^0.182.0"
-  }
-}
-

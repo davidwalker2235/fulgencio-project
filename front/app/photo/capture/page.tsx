@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { Suspense, useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function PhotoCapturePage() {
+function PhotoCaptureContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fullName = searchParams.get("name") || "";
@@ -217,5 +217,20 @@ export default function PhotoCapturePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PhotoCapturePage() {
+  return (
+    <Suspense fallback={
+      <div 
+        className="min-h-screen w-full flex flex-col items-center justify-center"
+        style={{ backgroundColor: "#033778" }}
+      >
+        <p className="text-white">Cargando...</p>
+      </div>
+    }>
+      <PhotoCaptureContent />
+    </Suspense>
   );
 }

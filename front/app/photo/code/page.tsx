@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 
-export default function PhotoCodePage() {
+function PhotoCodeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const code = searchParams.get("code") || "";
@@ -55,5 +56,20 @@ export default function PhotoCodePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PhotoCodePage() {
+  return (
+    <Suspense fallback={
+      <div 
+        className="min-h-screen w-full flex flex-col items-center justify-center"
+        style={{ backgroundColor: "#033778" }}
+      >
+        <p className="text-white">Cargando...</p>
+      </div>
+    }>
+      <PhotoCodeContent />
+    </Suspense>
   );
 }
