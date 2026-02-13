@@ -20,7 +20,7 @@ export default function VoiceConversation() {
 
   return (
     <div className="relative min-h-screen bg-zinc-50 dark:bg-black">
-      <div className="fixed inset-0 w-full h-full z-0">
+      <div className="fixed inset-0 w-full h-full z-0 overflow-hidden" style={{ contain: "layout" }}>
         <VideoLoop connectionStatus={connectionStatus} isSpeaking={isSpeaking} />
       </div>
       <div className="fixed top-0 left-0 left-0 z-10 flex flex-col items-center p-8 pointer-events-none">

@@ -24,30 +24,50 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
   });
 
   return (
-    <div className="relative w-full h-full min-h-screen">
+    <div
+      className="relative w-full h-full min-h-screen overflow-hidden"
+      style={{ contain: "layout" }}
+    >
       {/* Video de fondo fijo en loop continuo */}
       <video
         ref={backgroundVideoRef}
         className="absolute inset-0 w-full h-full object-contain"
-        style={{ zIndex: 0 }}
+        style={{
+          zIndex: 0,
+          transform: "translateZ(0)",
+          WebkitBackfaceVisibility: "hidden",
+          backfaceVisibility: "hidden",
+        }}
         playsInline
         muted
         loop={true}
         autoPlay
       />
-      {/* Videos del loop en capas superiores */}
+      {/* Videos del loop en capas superiores - estilos para evitar glitch de reflow en iPad Safari */}
       <video
         ref={video1Ref}
-        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
-        style={{ opacity: video1Opacity, zIndex: activeVideo === 1 ? 2 : 1 }}
+        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain transition-opacity duration-300"
+        style={{
+          opacity: video1Opacity,
+          zIndex: activeVideo === 1 ? 2 : 1,
+          transform: "translateZ(0)",
+          WebkitBackfaceVisibility: "hidden",
+          backfaceVisibility: "hidden",
+        }}
         playsInline
         muted
         loop={false}
       />
       <video
         ref={video2Ref}
-        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
-        style={{ opacity: video2Opacity, zIndex: activeVideo === 2 ? 2 : 1 }}
+        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain transition-opacity duration-300"
+        style={{
+          opacity: video2Opacity,
+          zIndex: activeVideo === 2 ? 2 : 1,
+          transform: "translateZ(0)",
+          WebkitBackfaceVisibility: "hidden",
+          backfaceVisibility: "hidden",
+        }}
         playsInline
         muted
         loop={false}
