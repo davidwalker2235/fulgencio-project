@@ -141,7 +141,9 @@ jobs:
         with:
           context: ./back
           push: true
-          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE }}:latest
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE }}:latest
           cache-from: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE }}:latest
           cache-to: type=inline
 
@@ -150,7 +152,9 @@ jobs:
         with:
           context: ./front
           push: true
-          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:latest
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:latest
           cache-from: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:latest
           cache-to: type=inline
           build-args: |
@@ -311,6 +315,8 @@ jobs:
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
           TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
+          TF_VAR_backend_image_tag: ${{ github.sha }}
+          TF_VAR_frontend_image_tag: ${{ github.sha }}
         continue-on-error: true
 
       - name: Terraform Plan
@@ -322,6 +328,8 @@ jobs:
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
           TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
+          TF_VAR_backend_image_tag: ${{ github.sha }}
+          TF_VAR_frontend_image_tag: ${{ github.sha }}
 
       - name: Ensure Role Assignment exists before deploying
         run: |
@@ -354,6 +362,8 @@ jobs:
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
           TF_VAR_azure_openai_api_version: ${{ secrets.AZURE_OPENAI_API_VERSION }}
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
+          TF_VAR_backend_image_tag: ${{ github.sha }}
+          TF_VAR_frontend_image_tag: ${{ github.sha }}
 
       - name: Configure ACR registry for Container Apps
         run: |

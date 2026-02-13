@@ -105,7 +105,7 @@ resource "azurerm_container_app" "backend" {
 
     container {
       name   = "backend"
-      image  = "${azurerm_container_registry.main.login_server}/backend:latest"
+      image  = "${azurerm_container_registry.main.login_server}/backend:${var.backend_image_tag}"
       cpu    = var.backend_cpu
       memory = var.backend_memory
 
@@ -134,6 +134,11 @@ resource "azurerm_container_app" "backend" {
         value = var.cors_origins
       }
     }
+  }
+
+  registry {
+    server   = azurerm_container_registry.main.login_server
+    identity = azurerm_user_assigned_identity.main.id
   }
 
   ingress {
@@ -178,7 +183,7 @@ resource "azurerm_container_app" "frontend" {
 
     container {
       name   = "frontend"
-      image  = "${azurerm_container_registry.main.login_server}/frontend:latest"
+      image  = "${azurerm_container_registry.main.login_server}/frontend:${var.frontend_image_tag}"
       cpu    = var.frontend_cpu
       memory = var.frontend_memory
 
@@ -202,6 +207,11 @@ resource "azurerm_container_app" "frontend" {
         value = "wss://${azurerm_container_app.backend.latest_revision_fqdn}/ws"
       }
     }
+  }
+
+  registry {
+    server   = azurerm_container_registry.main.login_server
+    identity = azurerm_user_assigned_identity.main.id
   }
 
   ingress {

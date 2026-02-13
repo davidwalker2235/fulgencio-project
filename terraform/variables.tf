@@ -112,3 +112,16 @@ variable "cors_origins" {
   default     = "https://fulgencio-frontend.*.azurecontainerapps.io"
 }
 
+# Tags de imagen para forzar nueva revisión en cada deploy (evita reinicio manual)
+variable "backend_image_tag" {
+  description = "Tag de la imagen backend (usar github.sha en CI para que Container Apps detecte cambios)"
+  type        = string
+  default     = "latest"
+}
+
+variable "frontend_image_tag" {
+  description = "Tag de la imagen frontend (usar github.sha en CI para que Container Apps detecte cambios)"
+  type        = string
+  default     = "latest"
+}
+
