@@ -1,9 +1,8 @@
 import { useMemo } from "react";
 import { ConnectionStatus } from "../types";
-import { sortVideosByNumber } from "../utils/videoUtils";
 
-const idleVideos = ["/animations/idle_1.mp4", "/animations/idle_2.mp4", "/animations/idle_3.mp4", "/animations/idle_4.mp4"];
-const speakVideos = ["/animations/speak_1.mp4", "/animations/speak_2.mp4"];
+const idleVideo = ["/animations/idle_video.mp4"];
+const speakVideo = ["/animations/speak_video.mp4"];
 
 export type AnimationMode = "idle-loop" | "idle-single" | "speak-loop";
 
@@ -22,8 +21,7 @@ export function useAnimationMode(connectionStatus: ConnectionStatus, isSpeaking:
   }, [connectionStatus, isSpeaking]);
 
   const videos = useMemo(() => {
-    const videoList = mode === "speak-loop" ? speakVideos : idleVideos;
-    return sortVideosByNumber(videoList);
+    return mode === "speak-loop" ? speakVideo : idleVideo;
   }, [mode]);
 
   return { mode, videos };

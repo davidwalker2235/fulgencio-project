@@ -50,8 +50,8 @@ export function useVideoLoop({ mode, videos }: UseVideoLoopProps): UseVideoLoopR
     const video2 = video2Ref.current;
     if (!video1 || !video2 || videos.length === 0) return;
 
-    // Si es modo single (idle_1 solo), solo usar video1
-    if (mode === "idle-single") {
+    // Si es modo single o hay un solo video, solo usar video1 (sin transiciones)
+    if (mode === "idle-single" || videos.length === 1) {
       loadVideo(video1, 0, video1IndexRef, videos);
       setVideo2Opacity(0);
       setVideo1Opacity(1);
@@ -102,8 +102,8 @@ export function useVideoLoop({ mode, videos }: UseVideoLoopProps): UseVideoLoopR
     const video2 = video2Ref.current;
     if (!video1 || !video2 || videos.length === 0) return;
 
-    // Si es modo single, hacer loop del mismo video
-    if (mode === "idle-single") {
+    // Si es modo single o hay un solo video, hacer loop del mismo video sin transiciones
+    if (mode === "idle-single" || videos.length === 1) {
       const handleVideo1End = () => {
         video1.currentTime = 0;
         safePlayVideo(video1);
