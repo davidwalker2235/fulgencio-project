@@ -204,7 +204,7 @@ resource "azurerm_container_app" "frontend" {
 
       env {
         name  = "NEXT_PUBLIC_WS_URL"
-        value = "wss://${azurerm_container_app.backend.latest_revision_fqdn}/ws"
+        value = "wss://${azurerm_container_app.backend.ingress[0].fqdn}/ws"
       }
     }
   }

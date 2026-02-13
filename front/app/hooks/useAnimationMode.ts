@@ -1,29 +1,19 @@
 import { useMemo } from "react";
 import { ConnectionStatus } from "../types";
-
-const idleVideo = ["/animations/idle_video.mp4"];
-const speakVideo = ["/animations/speak_video.mp4"];
-
-export type AnimationMode = "idle-loop" | "idle-single" | "speak-loop";
+import type { VideoMode } from "./useVideoLoop";
 
 /**
- * Hook para determinar el modo de animación y obtener los videos correspondientes
+ * Hook para determinar el modo de animación (idle o speak).
+ * El VideoLoop usa elementos dedicados preloaded, sin cambiar src.
  */
 export function useAnimationMode(connectionStatus: ConnectionStatus, isSpeaking: boolean) {
-  const mode = useMemo((): AnimationMode => {
-    if (connectionStatus === "Disconnected") {
-      return "idle-loop";
-    } else if (connectionStatus === "Connected" && isSpeaking) {
-      return "speak-loop";
-    } else {
-      return "idle-single";
+  const mode = useMemo((): VideoMode => {
+    if (connectionStatus === "Connected" && isSpeaking) {
+      return "speak";
     }
+    return "idle";
   }, [connectionStatus, isSpeaking]);
 
-  const videos = useMemo(() => {
-    return mode === "speak-loop" ? speakVideo : idleVideo;
-  }, [mode]);
-
-  return { mode, videos };
+  return { mode };
 }
 

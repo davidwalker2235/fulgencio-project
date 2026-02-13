@@ -14,14 +14,11 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
   // Hook para manejar el video de fondo
   const backgroundVideoRef = useBackgroundVideo();
 
-  // Hook para determinar el modo de animación y obtener los videos
-  const { mode, videos } = useAnimationMode(connectionStatus, isSpeaking);
+  // Hook para determinar el modo de animación
+  const { mode } = useAnimationMode(connectionStatus, isSpeaking);
 
-  // Hook para manejar el loop de videos con transiciones
-  const { video1Ref, video2Ref, activeVideo, video1Opacity, video2Opacity } = useVideoLoop({
-    mode,
-    videos,
-  });
+  // Elementos dedicados: video1=idle, video2=speak. Preloaded, solo cambia opacidad.
+  const { video1Ref, video2Ref, video1Opacity, video2Opacity } = useVideoLoop({ mode });
 
   return (
     <div
@@ -46,10 +43,10 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
       {/* Videos del loop en capas superiores - estilos para evitar glitch de reflow en iPad Safari */}
       <video
         ref={video1Ref}
-        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain"
+        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain transition-opacity duration-200"
         style={{
           opacity: video1Opacity,
-          zIndex: activeVideo === 1 ? 2 : 1,
+          zIndex: 1,
           transform: "translateZ(0)",
           WebkitBackfaceVisibility: "hidden",
           backfaceVisibility: "hidden",
@@ -60,10 +57,10 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
       />
       <video
         ref={video2Ref}
-        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain"
+        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain transition-opacity duration-200"
         style={{
           opacity: video2Opacity,
-          zIndex: activeVideo === 2 ? 2 : 1,
+          zIndex: 2,
           transform: "translateZ(0)",
           WebkitBackfaceVisibility: "hidden",
           backfaceVisibility: "hidden",
