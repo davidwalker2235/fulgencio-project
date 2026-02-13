@@ -382,7 +382,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       onMessage("error", (data: WebSocketMessage) => {
-        setError((data.message as string) || "Error desconocido");
+        setError((data.message as string || data.error.message as string) || "Error desconocido");
         setConnectionStatus("Disconnected");
       });
 
@@ -496,7 +496,6 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, activeUserId]);
 
   const toggleConversation = useCallback((transcription: Message[]) => {
-    const aaa = transcription
     if (isRecording) {
       stopConversation(transcription);
     } else {

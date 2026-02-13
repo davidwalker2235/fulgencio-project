@@ -1,7 +1,3 @@
-"""
-Backend para conversación de voz con GPT Realtime de Microsoft Foundry
-Basado en: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/realtime-audio-quickstart
-"""
 import asyncio
 import base64
 import json
@@ -141,7 +137,7 @@ async def handle_realtime_connection(realtime_ws, websocket):
         "session": {
             "modalities": ["text", "audio"],
             "instructions": "Eres un asistente de voz amigable y útil. Habla con acento español de España. Tan solo di la frase 'Hola, cual es tu número para saber quién eres, por favor'. No digas nada más",
-            "voice": "nova",
+            "voice": "alloy",
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
             "input_audio_transcription": {
