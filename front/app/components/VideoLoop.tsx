@@ -46,7 +46,7 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
       {/* Videos del loop en capas superiores - estilos para evitar glitch de reflow en iPad Safari */}
       <video
         ref={video1Ref}
-        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain transition-opacity duration-300"
+        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain"
         style={{
           opacity: video1Opacity,
           zIndex: activeVideo === 1 ? 2 : 1,
@@ -60,7 +60,7 @@ export default function VideoLoop({ connectionStatus, isSpeaking }: VideoLoopPro
       />
       <video
         ref={video2Ref}
-        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain transition-opacity duration-300"
+        className="absolute inset-0 w-full h-full min-w-full min-h-full object-contain"
         style={{
           opacity: video2Opacity,
           zIndex: activeVideo === 2 ? 2 : 1,
