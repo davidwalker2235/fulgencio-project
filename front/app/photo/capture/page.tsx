@@ -4,6 +4,23 @@ import { Suspense, useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
+function resolveBackendHttpBaseUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_BACKEND_HTTP_URL;
+  if (explicit && explicit.trim()) {
+    return explicit.replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    const host = window.location.hostname;
+    if (host.includes("fulgencio-frontend")) {
+      return `${protocol}//${host.replace("fulgencio-frontend", "fulgencio-backend")}`;
+    }
+  }
+
+  return "http://localhost:8000";
+}
+
 function PhotoCaptureContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -112,6 +129,34 @@ function PhotoCaptureContent() {
       });
 
       console.log(`Data saved to users/${userKey}`);
+
+      // Lanzar generación de caricatura en backend.
+      // Este proceso usa gpt-image-1.5 y guarda el resultado en Firebase:
+      // users/{userKey}/caricature
+      try {
+        const backendBaseUrl = resolveBackendHttpBaseUrl();
+        const caricatureEndpoint = `${backendBaseUrl}/photo/generate-caricature`;
+        console.log(`Calling backend caricature endpoint: ${caricatureEndpoint}`);
+        const response = await fetch(caricatureEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderNumber: userKey,
+            photoBase64: photo,
+          }),
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          console.error("Caricature generation failed:", response.status, body);
+        } else {
+          console.log(`Caricature requested successfully for users/${userKey}`);
+        }
+      } catch (caricatureErr) {
+        console.error("Error calling caricature endpoint:", caricatureErr);
+      }
 
       // Navegar a la pantalla del código
       router.push(`/photo/code?code=${userKey}`);
