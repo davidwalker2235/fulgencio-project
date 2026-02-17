@@ -17,6 +17,7 @@ interface UseVoiceConversationReturn {
   error: string;
   connectionStatus: ConnectionStatus;
   isSpeaking: boolean;
+  resolvedCaricatures: string[];
   activeUserId: string | null;
   startConversation: () => Promise<void>;
   stopConversation: (transcripción: Message[]) => void;
@@ -36,6 +37,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [resolvedCaricatures, setResolvedCaricatures] = useState<string[]>([]);
 
   const {
     connect,
@@ -169,6 +171,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       // Generar ID único para este usuario/sesión
       const userId = generateUserId();
       setActiveUserId(userId);
+      setResolvedCaricatures([]);
       console.log("🆔 ID de usuario generado:", userId);
 
       // Configurar handlers de mensajes WebSocket ANTES de conectar
@@ -204,6 +207,18 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           timestamp: new Date(),
         };
         setTranscription((prev) => [...prev, userMessage]);
+      });
+
+      onMessage("user.context.resolved", (data: WebSocketMessage) => {
+        if (Array.isArray(data.caricatures)) {
+          const cleaned = data.caricatures.filter(
+            (img: unknown) => typeof img === "string" && img.trim().length > 0
+          ) as string[];
+          console.log("🖼️ Caricaturas recibidas en frontend:", cleaned.length);
+          setResolvedCaricatures(cleaned);
+          return;
+        }
+        setResolvedCaricatures([]);
       });
 
       // Handler para cuando se completa el procesamiento de un mensaje de texto
@@ -492,6 +507,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setConnectionStatus("Disconnected");
     currentResponseIdRef.current = null;
     isUserSpeakingRef.current = false;
+    setResolvedCaricatures([]);
     setTranscription([]);
   }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, activeUserId]);
 
@@ -564,6 +580,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     error,
     connectionStatus,
     isSpeaking,
+    resolvedCaricatures,
     activeUserId,
     startConversation,
     stopConversation,

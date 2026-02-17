@@ -4,6 +4,13 @@ export interface Message {
   timestamp: Date;
 }
 
+export interface UserContextResolvedPayload {
+  type: "user.context.resolved";
+  orderNumber: string;
+  fullName: string;
+  caricatures: string[];
+}
+
 export type ConnectionStatus = "Disconnected" | "Connecting" | "Connected";
 export type PhotoState = "idle" | "takingPhoto" | "photoTaken";
 

@@ -658,6 +658,27 @@ async def handle_realtime_connection(realtime_ws, websocket):
             ).strip()
         )
         print(f"Nombre resuelto desde Firebase: {resolved_name or '(vacío)'}")
+        resolved_caricatures = user_data.get("caricatures")
+        if isinstance(resolved_caricatures, list):
+            print(f"Caricaturas detectadas para usuario: {len(resolved_caricatures)}")
+        else:
+            print("Caricaturas detectadas para usuario: 0")
+
+        # Enviar al frontend el contexto resuelto (incluyendo caricaturas) para UI.
+        try:
+            await websocket.send_json({
+                "type": "user.context.resolved",
+                "orderNumber": order_number,
+                "fullName": resolved_name,
+                "caricatures": (
+                    resolved_caricatures
+                    if isinstance(resolved_caricatures, list)
+                    else []
+                ),
+            })
+            print("✅ Evento user.context.resolved enviado al frontend.")
+        except Exception as err:
+            print(f"⚠️ No se pudo enviar user.context.resolved al frontend: {err}")
 
         # Refuerzo fuerte: fijar contexto personalizado en la sesión realtime.
         # Esto aplica también cuando la respuesta no venga de un response.create explícito.
