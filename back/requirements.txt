@@ -4,3 +4,4 @@ websockets==14.1
 openai==1.57.0
 python-dotenv==1.0.1
 firebase-admin==7.1.0
+requests==2.32.5

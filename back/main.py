@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Optional
 
+import requests
 import websockets
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -57,6 +58,14 @@ AZURE_OPENAI_IMAGE_ENDPOINT = os.getenv(
     "AZURE_OPENAI_IMAGE_ENDPOINT",
     (
         f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{MODEL_IMAGE_NAME}/images/generations"
+        if AZURE_OPENAI_ENDPOINT
+        else ""
+    ),
+)
+AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
+    "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT",
+    (
+        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{MODEL_IMAGE_NAME}/images/edits"
         if AZURE_OPENAI_ENDPOINT
         else ""
     ),
@@ -210,10 +219,11 @@ def parse_generated_base64(response_data: dict[str, Any]) -> Optional[str]:
 
 def call_image_generation_sync(photo_base64_or_data_url: str) -> str:
     """
-    Llama al endpoint gpt-image-1.5 de Azure Foundry y devuelve la imagen generada en base64.
+    Edita imagen usando gpt-image-1.5 en endpoint /images/edits
+    enviando multipart/form-data (image + prompt), según guía indicada.
     """
-    if not AZURE_OPENAI_IMAGE_ENDPOINT:
-        raise RuntimeError("AZURE_OPENAI_IMAGE_ENDPOINT no configurado")
+    if not AZURE_OPENAI_IMAGE_EDITS_ENDPOINT:
+        raise RuntimeError("AZURE_OPENAI_IMAGE_EDITS_ENDPOINT no configurado")
     if not AZURE_OPENAI_API_KEY:
         raise RuntimeError("AZURE_OPENAI_API_KEY no configurado")
 
@@ -221,83 +231,57 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> str:
     if not raw_base64:
         raise RuntimeError("Foto base64 vacía")
 
-    request_url = (
-        f"{AZURE_OPENAI_IMAGE_ENDPOINT}"
-        f"?api-version={AZURE_OPENAI_IMAGE_API_VERSION}"
-    )
-    print(f"🖼️ Enviando imagen a Foundry: {request_url}")
+    try:
+        image_bytes = base64.b64decode(raw_base64, validate=True)
+    except Exception as err:
+        raise RuntimeError(f"Base64 de foto inválido: {err}") from err
 
-    # Variante 1: equivalente al cURL oficial de Foundry para images/generations.
-    # Nota: este endpoint de generations puede no aceptar imagen de entrada según despliegue.
-    payload_variants: list[dict[str, Any]] = [
-        {
-            "prompt": AZURE_OPENAI_IMAGE_PROMPT,
-            "size": "1024x1024",
-            "quality": "medium",
-            "output_compression": 100,
-            "output_format": "png",
-            "n": 1,
-        },
-        # Variante 2 (fallback): algunos despliegues aceptan input_image.
-        {
-            "prompt": AZURE_OPENAI_IMAGE_PROMPT,
-            "input_image": raw_base64,
-            "size": "1024x1024",
-            "quality": "medium",
-            "output_compression": 100,
-            "output_format": "png",
-            "n": 1,
-        },
-        # Variante 3 (fallback): data URL.
-        {
-            "prompt": AZURE_OPENAI_IMAGE_PROMPT,
-            "image_url": f"data:image/jpeg;base64,{raw_base64}",
-            "size": "1024x1024",
-            "quality": "medium",
-            "output_compression": 100,
-            "output_format": "png",
-            "n": 1,
-        },
-    ]
+    # Nombre/extensión orientativo; el backend recibe jpeg desde canvas por defecto.
+    files = {
+        "image": ("image_to_edit.jpg", image_bytes, "image/jpeg"),
+    }
+    data = {
+        "prompt": AZURE_OPENAI_IMAGE_PROMPT,
+    }
+    headers = {
+        "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
+    }
 
-    last_error: Optional[Exception] = None
-    for index, payload in enumerate(payload_variants, start=1):
-        try:
-            print(f"🖼️ Intento generación caricatura #{index}")
-            request = urllib.request.Request(
-                request_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    # Adaptado al ejemplo oficial que compartiste
-                    "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(request, timeout=60) as response:
-                body = response.read().decode("utf-8")
-                response_data = json.loads(body) if body else {}
-                generated_base64 = parse_generated_base64(response_data)
-                if generated_base64:
-                    print("✅ Caricatura generada correctamente.")
-                    return generated_base64
-                raise RuntimeError("Respuesta sin b64_json")
-        except urllib.error.HTTPError as http_err:
-            error_body = ""
-            try:
-                error_body = http_err.read().decode("utf-8")
-            except Exception:
-                error_body = "<no-body>"
-            print(
-                f"⚠️ Falló intento #{index} de caricatura: "
-                f"HTTP {http_err.code} {http_err.reason}. Body: {error_body}"
-            )
-            last_error = RuntimeError(f"HTTP {http_err.code}: {error_body}")
-        except Exception as err:
-            print(f"⚠️ Falló intento #{index} de caricatura: {err}")
-            last_error = err
+    # Azure puede requerir versión preview para edits aunque generations funcione.
+    candidate_versions: list[str] = []
+    for version in [AZURE_OPENAI_IMAGE_API_VERSION, "2025-04-01-preview", "2024-02-01"]:
+        if version and version not in candidate_versions:
+            candidate_versions.append(version)
 
-    raise RuntimeError(f"No se pudo generar caricatura: {last_error}")
+    last_error = ""
+    for index, version in enumerate(candidate_versions, start=1):
+        request_url = f"{AZURE_OPENAI_IMAGE_EDITS_ENDPOINT}?api-version={version}"
+        print(f"🖼️ Intento edits #{index}: {request_url}")
+        response = requests.post(
+            request_url,
+            headers=headers,
+            files=files,
+            data=data,
+            timeout=90,
+        )
+        print(f"🖼️ Status Foundry edits #{index}: {response.status_code}")
+
+        if response.status_code == 200:
+            response_data = response.json()
+            generated_base64 = parse_generated_base64(response_data)
+            if generated_base64:
+                print(f"✅ Caricatura generada correctamente (api-version={version}).")
+                return generated_base64
+            last_error = f"200 sin b64_json (api-version={version}). Body: {response.text}"
+            continue
+
+        last_error = (
+            f"HTTP {response.status_code} {response.reason} "
+            f"(api-version={version}). Body: {response.text}"
+        )
+        print(f"⚠️ {last_error}")
+
+    raise RuntimeError(last_error or "No se pudo generar caricatura por /images/edits")
 
 
 def normalize_text(text: str) -> str:
