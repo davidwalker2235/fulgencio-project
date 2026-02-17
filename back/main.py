@@ -247,41 +247,33 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> str:
         "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
     }
 
-    # Azure puede requerir versión preview para edits aunque generations funcione.
-    candidate_versions: list[str] = []
-    for version in [AZURE_OPENAI_IMAGE_API_VERSION, "2025-04-01-preview", "2024-02-01"]:
-        if version and version not in candidate_versions:
-            candidate_versions.append(version)
+    version = AZURE_OPENAI_IMAGE_API_VERSION
+    request_url = f"{AZURE_OPENAI_IMAGE_EDITS_ENDPOINT}?api-version={version}"
+    print(f"🖼️ Edit endpoint fijo: {request_url}")
+    response = requests.post(
+        request_url,
+        headers=headers,
+        files=files,
+        data=data,
+        timeout=90,
+    )
+    print(f"🖼️ Status Foundry edits: {response.status_code}")
 
-    last_error = ""
-    for index, version in enumerate(candidate_versions, start=1):
-        request_url = f"{AZURE_OPENAI_IMAGE_EDITS_ENDPOINT}?api-version={version}"
-        print(f"🖼️ Intento edits #{index}: {request_url}")
-        response = requests.post(
-            request_url,
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=90,
-        )
-        print(f"🖼️ Status Foundry edits #{index}: {response.status_code}")
-
-        if response.status_code == 200:
-            response_data = response.json()
-            generated_base64 = parse_generated_base64(response_data)
-            if generated_base64:
-                print(f"✅ Caricatura generada correctamente (api-version={version}).")
-                return generated_base64
-            last_error = f"200 sin b64_json (api-version={version}). Body: {response.text}"
-            continue
-
-        last_error = (
+    if response.status_code != 200:
+        raise RuntimeError(
             f"HTTP {response.status_code} {response.reason} "
             f"(api-version={version}). Body: {response.text}"
         )
-        print(f"⚠️ {last_error}")
 
-    raise RuntimeError(last_error or "No se pudo generar caricatura por /images/edits")
+    response_data = response.json()
+    generated_base64 = parse_generated_base64(response_data)
+    if generated_base64:
+        print(f"✅ Caricatura generada correctamente (api-version={version}).")
+        return generated_base64
+
+    raise RuntimeError(
+        f"200 sin b64_json (api-version={version}). Body: {response.text}"
+    )
 
 
 def normalize_text(text: str) -> str:
