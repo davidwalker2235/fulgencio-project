@@ -186,17 +186,20 @@ def extract_base64_payload(image_data: str) -> str:
     return image_data.strip()
 
 
-def parse_generated_base64(response_data: dict[str, Any]) -> Optional[str]:
+def parse_generated_base64_list(response_data: dict[str, Any]) -> list[str]:
     """
-    Extrae base64 desde posibles formatos de respuesta del endpoint images.
+    Extrae una lista de base64 desde posibles formatos de respuesta del endpoint images.
     """
+    results: list[str] = []
+
     data = response_data.get("data")
     if isinstance(data, list) and data:
-        first = data[0]
-        if isinstance(first, dict):
-            b64_json = first.get("b64_json")
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            b64_json = item.get("b64_json")
             if isinstance(b64_json, str) and b64_json.strip():
-                return b64_json.strip()
+                results.append(b64_json.strip())
 
     output = response_data.get("output")
     if isinstance(output, list) and output:
@@ -205,19 +208,28 @@ def parse_generated_base64(response_data: dict[str, Any]) -> Optional[str]:
                 continue
             b64_json = item.get("b64_json")
             if isinstance(b64_json, str) and b64_json.strip():
-                return b64_json.strip()
+                results.append(b64_json.strip())
             content = item.get("content")
             if isinstance(content, list):
                 for piece in content:
                     if isinstance(piece, dict):
                         b64_piece = piece.get("b64_json")
                         if isinstance(b64_piece, str) and b64_piece.strip():
-                            return b64_piece.strip()
+                            results.append(b64_piece.strip())
 
-    return None
+    # Eliminar posibles duplicados preservando orden.
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for entry in results:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        deduped.append(entry)
+
+    return deduped
 
 
-def call_image_generation_sync(photo_base64_or_data_url: str) -> str:
+def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     """
     Edita imagen usando gpt-image-1.5 en endpoint /images/edits
     enviando multipart/form-data (image + prompt), según guía indicada.
@@ -242,6 +254,7 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> str:
     }
     data = {
         "prompt": AZURE_OPENAI_IMAGE_PROMPT,
+        "n": "4",
     }
     headers = {
         "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
@@ -266,10 +279,13 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> str:
         )
 
     response_data = response.json()
-    generated_base64 = parse_generated_base64(response_data)
-    if generated_base64:
-        print(f"✅ Caricatura generada correctamente (api-version={version}).")
-        return generated_base64
+    generated_base64_list = parse_generated_base64_list(response_data)
+    if generated_base64_list:
+        print(
+            f"✅ Caricaturas generadas correctamente (api-version={version}). "
+            f"Cantidad: {len(generated_base64_list)}"
+        )
+        return generated_base64_list
 
     raise RuntimeError(
         f"200 sin b64_json (api-version={version}). Body: {response.text}"
@@ -453,7 +469,8 @@ async def firebase_get_user(order_number: str):
 @app.post("/photo/generate-caricature")
 async def generate_caricature(payload: CaricatureGenerationRequest):
     """
-    Genera caricatura desde foto usando gpt-image-1.5 y la guarda en users/{order}/caricature.
+    Genera caricaturas desde foto usando gpt-image-1.5 y las guarda en
+    users/{order}/caricatures (array).
     """
     order_number = payload.orderNumber.strip()
     print("========================================")
@@ -468,29 +485,36 @@ async def generate_caricature(payload: CaricatureGenerationRequest):
 
     try:
         print("1) Generando caricatura en Azure Foundry...")
-        caricature_base64 = await asyncio.to_thread(
+        caricatures_base64 = await asyncio.to_thread(
             call_image_generation_sync,
             payload.photoBase64,
         )
-        print(f"2) Caricatura generada. Longitud base64: {len(caricature_base64)}")
+        print(f"2) Caricaturas generadas. Total: {len(caricatures_base64)}")
+        for i, b64_img in enumerate(caricatures_base64, start=1):
+            print(f"   - Caricatura #{i}: longitud base64={len(b64_img)}")
 
-        print("3) Guardando caricatura en Firebase...")
+        caricatures_data_urls = [
+            f"data:image/png;base64,{img_b64}" for img_b64 in caricatures_base64
+        ]
+
+        print("3) Guardando caricaturas en Firebase...")
         updated_ok = await asyncio.to_thread(
             update_user_fields_in_realtime_db,
             order_number,
             {
-                "caricature": f"data:image/png;base64,{caricature_base64}",
-                "caricatureTimestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                "caricatures": caricatures_data_urls,
+                "caricaturesTimestamp": datetime.datetime.utcnow().isoformat() + "Z",
             },
         )
         if not updated_ok:
-            raise RuntimeError("No se pudo guardar caricature en Firebase")
+            raise RuntimeError("No se pudo guardar caricatures en Firebase")
 
-        print(f"✅ Caricatura guardada en users/{order_number}/caricature")
+        print(f"✅ Caricaturas guardadas en users/{order_number}/caricatures")
         return {
             "ok": True,
             "orderNumber": order_number,
             "storedInFirebase": True,
+            "generatedCount": len(caricatures_data_urls),
         }
     except HTTPException:
         raise
