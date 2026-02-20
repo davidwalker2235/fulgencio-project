@@ -382,8 +382,93 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       onMessage("error", (data: WebSocketMessage) => {
-        setError((data.message as string || data.error.message as string) || "Error desconocido");
+        setError((data.message as string || data.error?.message as string) || "Error desconocido");
         setConnectionStatus("Disconnected");
+      });
+
+      // ========== Handlers para Erni Agent ==========
+      
+      // Transcripción parcial del usuario (STT en tiempo real)
+      onMessage("stt_chunk", (data: WebSocketMessage) => {
+        console.log("🎤 [Erni] STT chunk:", data.transcript);
+      });
+
+      // Transcripción final del usuario
+      onMessage("stt_output", (data: WebSocketMessage) => {
+        console.log("🎤 [Erni] STT final:", data.transcript);
+        const userMessage: Message = {
+          role: "user",
+          content: (data.transcript as string) || "",
+          timestamp: new Date(),
+        };
+        setTranscription((prev) => [...prev, userMessage]);
+      });
+
+      // Texto de respuesta del agente (streaming)
+      onMessage("agent_chunk", (data: WebSocketMessage) => {
+        console.log("💬 [Erni] Agent chunk:", data.text);
+        const chunkText = (data.text as string) || "";
+        
+        if (!chunkText) return;
+        
+        setTranscription((prev) => {
+          const lastMessage = prev[prev.length - 1];
+          
+          if (lastMessage && lastMessage.role === "assistant") {
+            return [
+              ...prev.slice(0, -1),
+              {
+                ...lastMessage,
+                content: lastMessage.content + chunkText,
+              },
+            ];
+          } else {
+            return [
+              ...prev,
+              {
+                role: "assistant",
+                content: chunkText,
+                timestamp: new Date(),
+              },
+            ];
+          }
+        });
+      });
+
+      // Fin de respuesta del agente
+      onMessage("agent_end", (data: WebSocketMessage) => {
+        console.log("✅ [Erni] Agent respuesta completada");
+        currentResponseIdRef.current = null;
+      });
+
+      // Llamada a herramienta
+      onMessage("tool_call", (data: WebSocketMessage) => {
+        console.log("🔧 [Erni] Tool call:", data.name, data.args);
+      });
+
+      // Resultado de herramienta
+      onMessage("tool_result", (data: WebSocketMessage) => {
+        console.log("🔧 [Erni] Tool result:", data.name, data.result);
+      });
+
+      // Audio de respuesta (TTS) - base64 PCM 24kHz
+      onMessage("tts_chunk", (data: WebSocketMessage) => {
+        console.log("🔊 [Erni] TTS chunk recibido");
+        if (isInterruptedRef.current) {
+          console.log("⏸️ Audio interrumpido, ignorando TTS chunk");
+          return;
+        }
+
+        try {
+          const audioBase64 = (data.audio as string) || "";
+          if (audioBase64) {
+            const float32 = base64ToFloat32(audioBase64);
+            console.log("▶️ Reproduciendo TTS chunk, tamaño:", float32.length);
+            playAudio(float32);
+          }
+        } catch (audioErr) {
+          console.error("Error procesando TTS chunk:", audioErr);
+        }
       });
 
       // Configurar handlers de conexión ANTES de conectar

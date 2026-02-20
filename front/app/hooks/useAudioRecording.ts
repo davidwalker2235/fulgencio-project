@@ -36,10 +36,10 @@ export function useAudioRecording(): UseAudioRecordingReturn {
 
         streamRef.current = stream;
 
-        // Crear AudioContext para procesar el audio
+        // Crear AudioContext para procesar el audio (16kHz para entrada)
         const audioContext = new (window.AudioContext ||
           (window as any).webkitAudioContext)({
-          sampleRate: AUDIO_PROCESSING.sampleRate,
+          sampleRate: AUDIO_PROCESSING.inputSampleRate,
         });
         audioContextRef.current = audioContext;
 

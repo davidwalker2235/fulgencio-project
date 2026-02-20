@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import sys
+from enum import Enum
 from typing import Optional
 
 import websockets
@@ -12,6 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import AzureOpenAI
 
 load_dotenv()
+
+
+class VoiceAgent(str, Enum):
+    ERNI_AGENT = "erni_agent"
+    AZURE_AGENT = "azure_agent"
 
 app = FastAPI(title="GPT Realtime Voice API")
 
@@ -33,6 +39,9 @@ AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-01-preview")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-realtime")
 
+ERNI_AGENT_URL = os.getenv("ERNI_AGENT_URL", "wss://erni_voice_agent_user:74jxGh-J2a41CxZ_pQ2@robot-agent.enricd.com/ws")
+VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
+
 client: Optional[AzureOpenAI] = None
 
 if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
@@ -50,7 +59,8 @@ async def root():
         "status": "ok",
         "message": "GPT Realtime Voice API está funcionando",
         "model": MODEL_NAME,
-        "configured": client is not None,
+        "voice_agent": VOICE_AGENT_TYPE.value,
+        "configured": client is not None if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT else True,
     }
 
 
@@ -68,10 +78,46 @@ async def health():
 async def websocket_endpoint(websocket: WebSocket):
     """
     Endpoint WebSocket para manejar la conversación de voz en tiempo real.
-    Recibe audio del frontend y lo reenvía al modelo GPT Realtime de Microsoft Foundry.
+    Según VOICE_AGENT_TYPE, conecta con Erni Agent o Azure OpenAI Realtime.
     """
     await websocket.accept()
     
+    print(f"Usando agente de voz: {VOICE_AGENT_TYPE.value}")
+    
+    if VOICE_AGENT_TYPE == VoiceAgent.ERNI_AGENT:
+        await handle_erni_agent(websocket)
+    else:
+        await handle_azure_agent(websocket)
+
+
+async def handle_erni_agent(websocket: WebSocket):
+    """Maneja la conexión con Erni Agent"""
+    try:
+        print(f"Conectando a Erni Agent: {ERNI_AGENT_URL.split('@')[1] if '@' in ERNI_AGENT_URL else ERNI_AGENT_URL}")
+        
+        async with websockets.connect(ERNI_AGENT_URL) as erni_ws:
+            await handle_erni_connection(erni_ws, websocket)
+    
+    except Exception as e:
+        print(f"Error en Erni Agent WebSocket: {e}")
+        try:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Error al conectar con Erni Agent: {str(e)}"
+                })
+        except:
+            pass
+    finally:
+        try:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.close()
+        except:
+            pass
+
+
+async def handle_azure_agent(websocket: WebSocket):
+    """Maneja la conexión con Azure OpenAI Realtime"""
     if not client:
         await websocket.send_json({
             "type": "error",
@@ -103,7 +149,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_realtime_connection(realtime_ws, websocket)
         except Exception as e:
             print(f"Error con 'deployment', intentando con 'model': {e}")
-            # Si falla con deployment, intentar con model
             realtime_url = f"{endpoint_base}/openai/realtime?model={MODEL_NAME}&api-version={AZURE_OPENAI_API_VERSION}"
             print(f"Intentando conectar a: {realtime_url}")
             async with websockets.connect(
@@ -130,8 +175,107 @@ async def websocket_endpoint(websocket: WebSocket):
             pass
 
 
+async def handle_erni_connection(erni_ws, websocket: WebSocket):
+    """
+    Maneja la conexión con Erni Agent.
+    - Envía audio PCM binario directamente (16-bit, 16kHz, mono)
+    - Recibe eventos JSON: stt_chunk, stt_output, agent_chunk, agent_end, tool_call, tool_result, tts_chunk
+    """
+    
+    async def forward_audio_to_erni():
+        """Recibe audio del frontend y lo envía a Erni como binario PCM"""
+        try:
+            while True:
+                try:
+                    data = await websocket.receive()
+                except RuntimeError as e:
+                    if "disconnect" in str(e).lower():
+                        print("Cliente desconectado (receive)")
+                        break
+                    raise
+                
+                if "bytes" in data:
+                    audio_data = data["bytes"]
+                    if len(audio_data) > 0:
+                        try:
+                            await erni_ws.send(audio_data)
+                            if len(audio_data) % 100 == 0:
+                                print(f"Audio enviado a Erni Agent: {len(audio_data)} bytes")
+                        except websockets.exceptions.ConnectionClosed:
+                            print("Conexión con Erni Agent cerrada (enviando audio)")
+                            break
+                
+                elif "text" in data:
+                    try:
+                        message = json.loads(data["text"])
+                        print(f"Mensaje de control del frontend: {message.get('type', 'unknown')}")
+                    except json.JSONDecodeError:
+                        pass
+                        
+        except WebSocketDisconnect:
+            print("Cliente desconectado")
+        except Exception as e:
+            print(f"Error en forward_audio_to_erni: {e}")
+
+    async def forward_events_to_client():
+        """Recibe eventos JSON de Erni y los reenvía al frontend"""
+        try:
+            while True:
+                message = await erni_ws.recv()
+                if isinstance(message, str):
+                    try:
+                        data = json.loads(message)
+                        event_type = data.get("type", "unknown")
+                        print(f"Evento de Erni Agent: {event_type}")
+                        
+                        if websocket.client_state.name != "DISCONNECTED":
+                            await websocket.send_json(data)
+                            
+                    except json.JSONDecodeError:
+                        print(f"Mensaje no JSON de Erni: {message[:100]}")
+                elif isinstance(message, bytes):
+                    print(f"Datos binarios inesperados de Erni: {len(message)} bytes")
+                    
+        except websockets.exceptions.ConnectionClosed:
+            print("Conexión con Erni Agent cerrada")
+            try:
+                if websocket.client_state.name != "DISCONNECTED":
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Conexión con Erni Agent cerrada"
+                    })
+            except:
+                pass
+        except Exception as e:
+            print(f"Error en forward_events_to_client: {e}")
+
+    try:
+        print("Conexión con Erni Agent establecida")
+        if websocket.client_state.name != "DISCONNECTED":
+            await websocket.send_json({
+                "type": "session.created",
+                "message": "Conectado a Erni Agent"
+            })
+        
+        await asyncio.gather(
+            forward_audio_to_erni(),
+            forward_events_to_client(),
+            return_exceptions=True
+        )
+    except Exception as e:
+        print(f"Error en handle_erni_connection: {e}")
+        try:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.send_json({
+                    "type": "error",
+                    "message": str(e)
+                })
+        except:
+            pass
+
+
 async def handle_realtime_connection(realtime_ws, websocket):
-    """Maneja la conexión con GPT Realtime una vez establecida"""
+    """Maneja la conexión con GPT Realtime una vez establecida (Azure)"""
     session_init = {
         "type": "session.update",
         "session": {

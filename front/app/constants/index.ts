@@ -10,13 +10,15 @@ export const WEBSOCKET_URL =
 
 export const AUDIO_CONFIG = {
   channelCount: 1,
-  sampleRate: 24000,
+  sampleRate: 16000,
   echoCancellation: true,
   noiseSuppression: true,
 } as const;
 
 export const AUDIO_PROCESSING = {
   bufferSize: 4096,
+  inputSampleRate: 16000,
+  outputSampleRate: 24000,
   sampleRate: 24000,
 } as const;
 
