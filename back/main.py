@@ -1,16 +1,21 @@
 import asyncio
 import base64
+import datetime
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
+import requests
 import websockets
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AzureOpenAI
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -42,6 +47,36 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gpt-realtime")
 ERNI_AGENT_URL = os.getenv("ERNI_AGENT_URL", "wss://erni_voice_agent_user:74jxGh-J2a41CxZ_pQ2@robot-agent.enricd.com/ws")
 VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
 
+# Configuración de Firebase
+FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
+
+# Configuración de generación de imágenes (caricaturas)
+MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
+AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
+    "AZURE_OPENAI_IMAGE_API_VERSION",
+    os.getenv("AZURE_OPENAI_IMAGE_API_KEY", "2024-02-01"),
+)
+AZURE_OPENAI_IMAGE_PROMPT = os.getenv(
+    "AZURE_OPENAI_IMAGE_PROMPT",
+    "Make an exaggerated caricature of the person appearing in this photo in a line drawing style.",
+)
+AZURE_OPENAI_IMAGE_ENDPOINT = os.getenv(
+    "AZURE_OPENAI_IMAGE_ENDPOINT",
+    (
+        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{MODEL_IMAGE_NAME}/images/generations"
+        if AZURE_OPENAI_ENDPOINT
+        else ""
+    ),
+)
+AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
+    "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT",
+    (
+        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{MODEL_IMAGE_NAME}/images/edits"
+        if AZURE_OPENAI_ENDPOINT
+        else ""
+    ),
+)
+
 client: Optional[AzureOpenAI] = None
 
 if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
@@ -50,6 +85,152 @@ if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
         api_version=AZURE_OPENAI_API_VERSION,
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
     )
+
+
+def update_user_fields_in_realtime_db(order_number: str, fields: dict[str, Any]) -> bool:
+    """
+    Actualiza campos parciales en users/{order_number} usando REST PATCH.
+    """
+    if not FIREBASE_DATABASE_URL:
+        print("❌ FIREBASE_DATABASE_URL no configurado para actualizar Firebase.")
+        return False
+
+    try:
+        url = f"{FIREBASE_DATABASE_URL.rstrip('/')}/users/{order_number}.json"
+        payload = json.dumps(fields).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="PATCH",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status = getattr(response, "status", 200)
+            return 200 <= status < 300
+    except Exception as err:
+        print(f"❌ Error actualizando Firebase REST para {order_number}: {err}")
+        return False
+
+
+def extract_base64_payload(image_data: str) -> str:
+    """
+    Admite data URL o base64 directo y devuelve solo el payload base64.
+    """
+    if not image_data:
+        return ""
+    marker = "base64,"
+    if marker in image_data:
+        return image_data.split(marker, 1)[1].strip()
+    return image_data.strip()
+
+
+def parse_generated_base64_list(response_data: dict[str, Any]) -> list[str]:
+    """
+    Extrae una lista de base64 desde posibles formatos de respuesta del endpoint images.
+    """
+    results: list[str] = []
+
+    data = response_data.get("data")
+    if isinstance(data, list) and data:
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            b64_json = item.get("b64_json")
+            if isinstance(b64_json, str) and b64_json.strip():
+                results.append(b64_json.strip())
+
+    output = response_data.get("output")
+    if isinstance(output, list) and output:
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            b64_json = item.get("b64_json")
+            if isinstance(b64_json, str) and b64_json.strip():
+                results.append(b64_json.strip())
+            content = item.get("content")
+            if isinstance(content, list):
+                for piece in content:
+                    if isinstance(piece, dict):
+                        b64_piece = piece.get("b64_json")
+                        if isinstance(b64_piece, str) and b64_piece.strip():
+                            results.append(b64_piece.strip())
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for entry in results:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        deduped.append(entry)
+
+    return deduped
+
+
+def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
+    """
+    Edita imagen usando gpt-image-1.5 en endpoint /images/edits
+    enviando multipart/form-data (image + prompt).
+    """
+    if not AZURE_OPENAI_IMAGE_EDITS_ENDPOINT:
+        raise RuntimeError("AZURE_OPENAI_IMAGE_EDITS_ENDPOINT no configurado")
+    if not AZURE_OPENAI_API_KEY:
+        raise RuntimeError("AZURE_OPENAI_API_KEY no configurado")
+
+    raw_base64 = extract_base64_payload(photo_base64_or_data_url)
+    if not raw_base64:
+        raise RuntimeError("Foto base64 vacía")
+
+    try:
+        image_bytes = base64.b64decode(raw_base64, validate=True)
+    except Exception as err:
+        raise RuntimeError(f"Base64 de foto inválido: {err}") from err
+
+    files = {
+        "image": ("image_to_edit.jpg", image_bytes, "image/jpeg"),
+    }
+    data = {
+        "prompt": AZURE_OPENAI_IMAGE_PROMPT,
+        "n": "1",
+    }
+    headers = {
+        "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
+    }
+
+    version = AZURE_OPENAI_IMAGE_API_VERSION
+    request_url = f"{AZURE_OPENAI_IMAGE_EDITS_ENDPOINT}?api-version={version}"
+    print(f"🖼️ Edit endpoint: {request_url}")
+    response = requests.post(
+        request_url,
+        headers=headers,
+        files=files,
+        data=data,
+        timeout=90,
+    )
+    print(f"🖼️ Status Foundry edits: {response.status_code}")
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"HTTP {response.status_code} {response.reason} "
+            f"(api-version={version}). Body: {response.text}"
+        )
+
+    response_data = response.json()
+    generated_base64_list = parse_generated_base64_list(response_data)
+    if generated_base64_list:
+        print(
+            f"✅ Caricaturas generadas correctamente (api-version={version}). "
+            f"Cantidad: {len(generated_base64_list)}"
+        )
+        return generated_base64_list
+
+    raise RuntimeError(
+        f"200 sin b64_json (api-version={version}). Body: {response.text}"
+    )
+
+
+class CaricatureGenerationRequest(BaseModel):
+    orderNumber: str
+    photoBase64: str
 
 
 @app.get("/")
@@ -72,6 +253,63 @@ async def health():
         "endpoint_configured": bool(AZURE_OPENAI_ENDPOINT),
         "api_key_configured": bool(AZURE_OPENAI_API_KEY),
     }
+
+
+@app.post("/photo/generate-caricature")
+async def generate_caricature(payload: CaricatureGenerationRequest):
+    """
+    Genera caricaturas desde foto usando gpt-image-1.5 y las guarda en
+    users/{order}/caricatures (array).
+    """
+    order_number = payload.orderNumber.strip()
+    print("========================================")
+    print("🟦 Inicio generación de caricatura")
+    print(f"🧾 orderNumber: {order_number}")
+    print("========================================")
+
+    if not order_number:
+        raise HTTPException(status_code=400, detail="orderNumber es obligatorio")
+    if not payload.photoBase64.strip():
+        raise HTTPException(status_code=400, detail="photoBase64 es obligatorio")
+
+    try:
+        print("1) Generando caricatura en Azure Foundry...")
+        caricatures_base64 = await asyncio.to_thread(
+            call_image_generation_sync,
+            payload.photoBase64,
+        )
+        print(f"2) Caricaturas generadas. Total: {len(caricatures_base64)}")
+        for i, b64_img in enumerate(caricatures_base64, start=1):
+            print(f"   - Caricatura #{i}: longitud base64={len(b64_img)}")
+
+        caricatures_data_urls = [
+            f"data:image/png;base64,{img_b64}" for img_b64 in caricatures_base64
+        ]
+
+        print("3) Guardando caricaturas en Firebase...")
+        updated_ok = await asyncio.to_thread(
+            update_user_fields_in_realtime_db,
+            order_number,
+            {
+                "caricatures": caricatures_data_urls,
+                "caricaturesTimestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            },
+        )
+        if not updated_ok:
+            raise RuntimeError("No se pudo guardar caricatures en Firebase")
+
+        print(f"✅ Caricaturas guardadas en users/{order_number}/caricatures")
+        return {
+            "ok": True,
+            "orderNumber": order_number,
+            "storedInFirebase": True,
+            "generatedCount": len(caricatures_data_urls),
+        }
+    except HTTPException:
+        raise
+    except Exception as err:
+        print(f"❌ Error en generación/guardado de caricatura: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
 
 
 @app.websocket("/ws")

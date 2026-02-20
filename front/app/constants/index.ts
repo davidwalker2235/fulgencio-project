@@ -8,6 +8,14 @@ export const WEBSOCKET_URL =
         : `ws://${window.location.hostname}:8000/ws`)
     : "ws://localhost:8000/ws");
 
+export const API_BASE_URL = 
+  process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== "undefined" 
+    ? (window.location.protocol === "https:" 
+        ? `https://${window.location.hostname.replace('fulgencio-frontend', 'fulgencio-backend')}`
+        : `http://${window.location.hostname}:8000`)
+    : "http://localhost:8000");
+
 export const AUDIO_CONFIG = {
   channelCount: 1,
   sampleRate: 16000,

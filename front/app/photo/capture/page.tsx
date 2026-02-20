@@ -3,6 +3,7 @@
 import { Suspense, useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { API_BASE_URL } from "../../constants";
 
 function PhotoCaptureContent() {
   const router = useRouter();
@@ -15,6 +16,7 @@ function PhotoCaptureContent() {
   const streamRef = useRef<MediaStream | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>("Sending...");
   const [cameraError, setCameraError] = useState<string>("");
   const [isCameraStarting, setIsCameraStarting] = useState(false);
 
@@ -92,10 +94,12 @@ function PhotoCaptureContent() {
     if (!photo || !email) return;
 
     setIsLoading(true);
+    setLoadingMessage("Saving data...");
+    
     try {
       // Import lazy para evitar que la ruta falle al cargar si Firebase no está disponible
-      // (por ejemplo, configuración incompleta). Solo lo necesitamos al enviar.
       const { FirebaseService } = await import("../../services/firebaseService");
+      
       // Obtener el siguiente número correlativo desde Firebase users
       const usersData = await FirebaseService.read<Record<string, unknown>>("users");
       const keys = usersData ? Object.keys(usersData) : [];
@@ -103,21 +107,49 @@ function PhotoCaptureContent() {
       const nextId = numericKeys.length === 0 ? 1 : Math.max(...numericKeys) + 1;
       const userKey = String(nextId);
 
-      // Guardar en Firebase con la key numérica correlativa
+      // Guardar datos básicos en Firebase
       await FirebaseService.write(`users/${userKey}`, {
         fullName,
         email,
-        photo: photo, // Foto en base64
+        photo: photo,
         timestamp: new Date().toISOString(),
       });
 
       console.log(`Data saved to users/${userKey}`);
 
-      // Navegar a la pantalla del código
+      // Generar caricatura llamando al backend
+      setLoadingMessage("Generating caricature...");
+      console.log("Calling caricature generation endpoint...");
+      
+      const response = await fetch(`${API_BASE_URL}/photo/generate-caricature`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderNumber: userKey,
+          photoBase64: photo,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Error generating caricature:", errorData);
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Caricature generated successfully:", result);
+
+      // Navegar a la pantalla del código solo después de generar la caricatura
       router.push(`/photo/code?code=${userKey}`);
     } catch (error) {
-      console.error("Error saving to Firebase:", error);
-      setIsLoading(false);
+      console.error("Error in handleSend:", error);
+      setLoadingMessage("Error occurred");
+      setTimeout(() => {
+        setIsLoading(false);
+        setLoadingMessage("Sending...");
+      }, 2000);
     }
   };
 
@@ -203,7 +235,7 @@ function PhotoCaptureContent() {
                 disabled={isLoading}
                 className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-green-500 text-white hover:bg-green-600 active:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? "Sending..." : "Send"}
+                {isLoading ? loadingMessage : "Send"}
               </button>
               <button
                 onClick={handleRepeat}
