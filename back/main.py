@@ -45,6 +45,10 @@ FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "")
 USER_DATA_API_URL = os.getenv("USER_DATA_API_URL", "").strip()
 USER_DATA_API_TIMEOUT_SECONDS = int(os.getenv("USER_DATA_API_TIMEOUT_SECONDS", "5"))
 USER_DATA_API_RETRIES = int(os.getenv("USER_DATA_API_RETRIES", "2"))
+
+# URLs para eventos de robot (regalo y caricatura)
+GIFT_ROBOT_API_URL = os.getenv("GIFT_ROBOT_API_URL", "aqui irá la URL del regalo")
+CARICATURE_ROBOT_API_URL = os.getenv("CARICATURE_ROBOT_API_URL", "aqui irá la URL de la caricatura")
 MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
 AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
     "AZURE_OPENAI_IMAGE_API_VERSION",
@@ -73,6 +77,9 @@ AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
 
 client: Optional[AzureOpenAI] = None
 firebase_app: Optional[Any] = None
+active_sessions: dict[str, Any] = {}
+current_status: str = "idle"
+status_listener_started: bool = False
 
 if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
     client = AzureOpenAI(
@@ -254,7 +261,7 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     }
     data = {
         "prompt": AZURE_OPENAI_IMAGE_PROMPT,
-        "n": "4",
+        "n": "1",
     }
     headers = {
         "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
@@ -364,17 +371,52 @@ def build_personalization_instructions(order_number: str, user_data: dict[str, A
         or "usuario"
     )
     user_name = str(raw_name).strip() or "usuario"
+    has_caricature = bool(user_data.get("caricatures"))
+    
     return (
         "Contexto interno de sesión: usuario identificado por número de orden.\n"
         f"Número de orden verificado: {order_number}.\n"
         f"Nombre del usuario: {user_name}.\n"
-        "Reglas obligatorias para esta respuesta:\n"
-        f"- Debes dirigirte al usuario por su nombre exacto: {user_name}.\n"
-        f"- Si saludas, utiliza explícitamente el nombre: 'Hola {user_name}, ...'.\n"
+        f"Tiene caricatura generada: {'Sí' if has_caricature else 'No'}.\n\n"
+        "INSTRUCCIONES OBLIGATORIAS:\n"
+        f"1. Saluda al usuario por su nombre: 'Hola {user_name}'.\n"
+        "2. Tras el saludo, ofrécele EXPLÍCITAMENTE una de estas dos opciones:\n"
+        "   - 'Puedo mostrarte una caricatura divertida basada en tu foto'\n"
+        "   - 'O si lo prefieres, puedo darte un regalo'\n"
+        "3. Espera la respuesta del usuario.\n\n"
+        "REGLAS DE RESPUESTA:\n"
+        f"- Siempre dirígete al usuario por su nombre: {user_name}.\n"
         "- No uses el número de orden para dirigirte al usuario.\n"
         "- Nunca digas 'Hola número X' ni variantes.\n"
-        "Responde de forma personalizada y natural usando estos datos. "
-        "No expliques que este contexto viene de un proceso interno."
+        "- Si el usuario pide REGALO: responde confirmando que le darás el regalo.\n"
+        "- Si el usuario pide CARICATURA: responde confirmando que le mostrarás la caricatura.\n"
+        "- Responde de forma breve, amigable y natural.\n"
+        "- No expliques que este contexto viene de un proceso interno."
+    )
+
+
+def build_painting_instructions(user_name: str) -> str:
+    """Construye instrucciones para el estado 'painting' (cuando se está dibujando la caricatura)."""
+    return (
+        f"El usuario {user_name} está esperando mientras se dibuja su caricatura.\n"
+        "Tu misión es mantener una conversación amena siguiendo ESTRICTAMENTE estos temas:\n\n"
+        "TEMAS PERMITIDOS (navega entre ellos de forma natural):\n"
+        "1. Pregúntale dónde trabaja. Cuando responda, da una opinión MUY BREVE sobre esa empresa.\n"
+        "2. Pregúntale en qué puesto trabaja y alaba brevemente ese puesto.\n"
+        "3. Pregúntale qué espera del Talent Arena y qué es lo que más le está gustando.\n"
+        "4. Pregúntale si conoce ERNI Consulting:\n"
+        "   - Si dice SÍ: alábalo y menciona que puede hablar con cualquier persona del stand.\n"
+        "   - Si dice NO: explica brevemente que ERNI es una consultora tecnológica suiza con presencia global, "
+        "     especializada en desarrollo de software, cloud, IA y transformación digital.\n"
+        "5. Si te preguntan tu nombre: 'Me llamo Fulgencio y he sido creado por David Carmona, "
+        "   Enric Domingo y Jordi Rebull, todos expertos desarrolladores de ERNI Consulting.'\n\n"
+        "RESTRICCIONES ABSOLUTAS:\n"
+        "- Si el usuario pregunta algo FUERA de estos temas, redirige elegantemente la conversación "
+        "  hacia uno de los temas permitidos.\n"
+        "- Está PROHIBIDO hablar de política, religión, temas polémicos o cualquier cosa no relacionada.\n"
+        "- Mantén respuestas BREVES (máximo 2-3 frases).\n"
+        "- Navega entre los temas de forma fluida buscando conexiones naturales.\n"
+        "- Sé amable, profesional y con un toque de humor.\n"
     )
 
 
@@ -416,7 +458,98 @@ def send_user_data_to_external_api_sync(order_number: str, user_data: dict[str, 
     return False
 
 
+async def trigger_gift_robot(order_number: str) -> bool:
+    """
+    Dispara evento para mover el robot de regalo.
+    Envía el número de orden al robot.
+    """
+    print(f"🎁 Disparando evento de regalo para usuario {order_number}...")
+    try:
+        response = await asyncio.to_thread(
+            lambda: requests.post(
+                GIFT_ROBOT_API_URL,
+                json={"orderNumber": order_number, "action": "gift"},
+                timeout=10,
+            )
+        )
+        if 200 <= response.status_code < 300:
+            print(f"✅ Robot regalo activado para usuario {order_number}")
+            return True
+        else:
+            print(f"⚠️ Robot regalo respondió con status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"se ha lanzado evento para regalo (error: {e})")
+        return False
+
+
+async def trigger_caricature_robot(order_number: str, caricature_base64: str) -> bool:
+    """
+    Dispara evento para que el robot dibuje la caricatura.
+    Envía la imagen en base64 al robot.
+    """
+    print(f"🖼️ Disparando evento de caricatura para usuario {order_number}...")
+    try:
+        response = await asyncio.to_thread(
+            lambda: requests.post(
+                CARICATURE_ROBOT_API_URL,
+                json={
+                    "orderNumber": order_number,
+                    "action": "caricature",
+                    "image": caricature_base64,
+                },
+                timeout=30,
+            )
+        )
+        if 200 <= response.status_code < 300:
+            print(f"✅ Robot caricatura activado para usuario {order_number}")
+            return True
+        else:
+            print(f"⚠️ Robot caricatura respondió con status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"se ha lanzado evento para caricatura (error: {e})")
+        return False
+
+
+def setup_firebase_status_listener():
+    """
+    Configura listener para cambios en el nodo 'status' de Firebase.
+    Cuando cambia a 'painting', notifica a las sesiones activas.
+    """
+    global status_listener_started, current_status
+    
+    if status_listener_started:
+        return
+    
+    if firebase_app is None:
+        print("⚠️ Firebase no inicializado, no se puede configurar listener de status")
+        return
+    
+    def on_status_change(event):
+        global current_status
+        new_status = event.data
+        if new_status == current_status:
+            return
+        
+        old_status = current_status
+        current_status = new_status if new_status else "idle"
+        print(f"📡 Status Firebase cambió: {old_status} -> {current_status}")
+        
+        if current_status == "painting":
+            print("🎨 Estado 'painting' detectado - se aplicarán instrucciones de conversación")
+    
+    try:
+        ref = db.reference("status")
+        ref.listen(on_status_change)
+        status_listener_started = True
+        print("✅ Listener de status de Firebase configurado correctamente")
+    except Exception as e:
+        print(f"⚠️ Error configurando listener de status: {e}")
+
+
 initialize_firebase()
+setup_firebase_status_listener()
 
 
 class CaricatureGenerationRequest(BaseModel):
@@ -599,11 +732,20 @@ async def handle_realtime_connection(realtime_ws, websocket):
         "initial_response_sent": False,
     }
 
+    base_instructions = (
+        "Eres Fulgencio, un asistente de voz amigable creado por David Carmona, "
+        "Enric Domingo y Jordi Rebull, todos expertos desarrolladores de ERNI Consulting. "
+        "Habla con acento español de España. "
+        "Tu primera tarea es pedir al usuario su número de identificación. "
+        "Di la frase: 'Hola, soy Fulgencio. ¿Cuál es tu número para saber quién eres, por favor?'. "
+        "No digas nada más hasta que el usuario responda con su número."
+    )
+    
     session_init = {
         "type": "session.update",
         "session": {
             "modalities": ["text", "audio"],
-            "instructions": "Eres un asistente de voz amigable y útil. Habla con acento español de España. Tan solo di la frase 'Hola, cual es tu número para saber quién eres, por favor'. No digas nada más",
+            "instructions": base_instructions,
             "voice": "alloy",
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
@@ -615,8 +757,6 @@ async def handle_realtime_connection(realtime_ws, websocket):
                 "threshold": 0.5,
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 500,
-                # Control manual de respuestas desde backend para evitar carreras
-                # (transcripción -> Firebase -> prompt -> response.create).
                 "create_response": False,
             },
             "input_audio_transcription": {
@@ -640,7 +780,9 @@ async def handle_realtime_connection(realtime_ws, websocket):
             return
 
         user_data = await asyncio.to_thread(get_user_from_realtime_db, order_number)
+        '''
         print(f"user_data: {user_data}")
+        '''
         if not user_data:
             print(f"⚠️ Número detectado pero sin datos en Firebase: {order_number}")
             return
@@ -659,12 +801,15 @@ async def handle_realtime_connection(realtime_ws, websocket):
         )
         print(f"Nombre resuelto desde Firebase: {resolved_name or '(vacío)'}")
         resolved_caricatures = user_data.get("caricatures")
+        resolved_photo = user_data.get("photo")
         if isinstance(resolved_caricatures, list):
             print(f"Caricaturas detectadas para usuario: {len(resolved_caricatures)}")
         else:
             print("Caricaturas detectadas para usuario: 0")
+        if resolved_photo:
+            print(f"Foto del usuario detectada: {len(str(resolved_photo))} caracteres")
 
-        # Enviar al frontend el contexto resuelto (incluyendo caricaturas) para UI.
+        # Enviar al frontend el contexto resuelto (incluyendo caricaturas y foto) para UI.
         try:
             await websocket.send_json({
                 "type": "user.context.resolved",
@@ -675,24 +820,37 @@ async def handle_realtime_connection(realtime_ws, websocket):
                     if isinstance(resolved_caricatures, list)
                     else []
                 ),
+                "photo": resolved_photo if isinstance(resolved_photo, str) else None,
             })
             print("✅ Evento user.context.resolved enviado al frontend.")
         except Exception as err:
             print(f"⚠️ No se pudo enviar user.context.resolved al frontend: {err}")
 
         # Refuerzo fuerte: fijar contexto personalizado en la sesión realtime.
-        # Esto aplica también cuando la respuesta no venga de un response.create explícito.
+        user_name = resolved_name or "usuario"
+        
+        # Si el status actual es "painting", usar instrucciones de conversación especiales
+        if current_status == "painting":
+            session_instructions = (
+                "Eres Fulgencio, un asistente de voz amigable creado por David Carmona, "
+                "Enric Domingo y Jordi Rebull de ERNI Consulting. "
+                "Habla con acento español de España. "
+                f"El usuario se llama {user_name}.\n\n"
+                + build_painting_instructions(user_name)
+            )
+        else:
+            session_instructions = (
+                "Eres Fulgencio, un asistente de voz amigable creado por David Carmona, "
+                "Enric Domingo y Jordi Rebull de ERNI Consulting. "
+                "Habla con acento español de España. "
+                f"El usuario se llama {user_name}.\n\n"
+                + build_personalization_instructions(order_number, user_data)
+            )
+        
         session_update = {
             "type": "session.update",
             "session": {
-                "instructions": (
-                    "Eres un asistente de voz amigable y útil. Habla con acento español de España. "
-                    "El usuario ya está identificado por su número de orden. "
-                    f"Su nombre es: {resolved_name or 'usuario'}. "
-                    "Debes dirigirte al usuario por su nombre exacto y no por su número. "
-                    "Si saludas, usa el formato 'Hola <nombre>, ...'. "
-                    "Nunca digas 'Hola número X' ni variantes."
-                )
+                "instructions": session_instructions
             },
         }
         try:
@@ -707,6 +865,7 @@ async def handle_realtime_connection(realtime_ws, websocket):
     def inject_personalization_in_response(message: dict[str, Any]) -> dict[str, Any]:
         """
         Añade instrucciones personalizadas justo antes de pedir respuesta al modelo.
+        Usa instrucciones de 'painting' si el status es 'painting'.
         """
         if not session_ctx["is_user_locked"]:
             return message
@@ -716,7 +875,18 @@ async def handle_realtime_connection(realtime_ws, websocket):
         if not order_number or not isinstance(user_data, dict):
             return message
 
-        personalization = build_personalization_instructions(order_number, user_data)
+        user_name = str(
+            user_data.get("fullName")
+            or user_data.get("name")
+            or user_data.get("nombre")
+            or "usuario"
+        ).strip() or "usuario"
+
+        # Seleccionar instrucciones según el estado actual
+        if current_status == "painting":
+            personalization = build_painting_instructions(user_name)
+        else:
+            personalization = build_personalization_instructions(order_number, user_data)
 
         response_payload = message.get("response")
         if not isinstance(response_payload, dict):
@@ -844,7 +1014,9 @@ async def handle_realtime_connection(realtime_ws, websocket):
                 if isinstance(message, str):
                     try:
                         data = json.loads(message)
+                        """
                         print(f"Recibido de GPT Realtime: {data.get('type', 'unknown')}")
+                        """
 
                         # Captura transcripción final de audio de usuario.
                         if data.get("type") == "conversation.item.input_audio_transcription.completed":

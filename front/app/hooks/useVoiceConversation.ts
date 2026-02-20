@@ -18,6 +18,7 @@ interface UseVoiceConversationReturn {
   connectionStatus: ConnectionStatus;
   isSpeaking: boolean;
   resolvedCaricatures: string[];
+  resolvedPhoto: string | null;
   activeUserId: string | null;
   startConversation: () => Promise<void>;
   stopConversation: (transcripción: Message[]) => void;
@@ -38,6 +39,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     useState<ConnectionStatus>("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [resolvedCaricatures, setResolvedCaricatures] = useState<string[]>([]);
+  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(null);
 
   const {
     connect,
@@ -216,9 +218,16 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           ) as string[];
           console.log("🖼️ Caricaturas recibidas en frontend:", cleaned.length);
           setResolvedCaricatures(cleaned);
-          return;
+        } else {
+          setResolvedCaricatures([]);
         }
-        setResolvedCaricatures([]);
+        
+        if (typeof data.photo === "string" && data.photo.trim().length > 0) {
+          console.log("📸 Foto del usuario recibida en frontend");
+          setResolvedPhoto(data.photo);
+        } else {
+          setResolvedPhoto(null);
+        }
       });
 
       // Handler para cuando se completa el procesamiento de un mensaje de texto
@@ -581,6 +590,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     connectionStatus,
     isSpeaking,
     resolvedCaricatures,
+    resolvedPhoto,
     activeUserId,
     startConversation,
     stopConversation,

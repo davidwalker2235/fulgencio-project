@@ -17,6 +17,7 @@ export default function VoiceConversation() {
     connectionStatus,
     isSpeaking,
     resolvedCaricatures,
+    resolvedPhoto,
     toggleConversation,
     clearError,
   } = useVoiceConversation();
@@ -33,7 +34,7 @@ export default function VoiceConversation() {
       <div className="fixed top-0 left-0 left-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <ConnectionStatus status={connectionStatus} />
       </div>
-      <CaricaturesPanel images={resolvedCaricatures} />
+      <CaricaturesPanel images={resolvedCaricatures} userPhoto={resolvedPhoto} />
       <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <div className="w-full max-w-4xl space-y-4 pointer-events-auto">
           <Subtitles messages={transcription} isSpeaking={isSpeaking} isRecording={isRecording} />
