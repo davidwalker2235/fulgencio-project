@@ -362,61 +362,70 @@ def extract_order_number(text: str) -> Optional[str]:
     return None
 
 
-def build_personalization_instructions(order_number: str, user_data: dict[str, Any]) -> str:
-    """Construye instrucciones internas para que la respuesta sea personalizada."""
-    raw_name = (
-        user_data.get("fullName")
-        or user_data.get("name")
-        or user_data.get("nombre")
-        or "usuario"
-    )
-    user_name = str(raw_name).strip() or "usuario"
-    has_caricature = bool(user_data.get("caricatures"))
-    
+# =============================================================================
+# SISTEMA DE PROMPTS PARA FULGENCIO
+# =============================================================================
+
+REGLAS_CONVERSACION = """
+=== REGLAS DE CONVERSACIÓN (APLICAR SIEMPRE) ===
+
+IDENTIDAD:
+Eres Fulgencio, un asistente de voz amigable. Hablas con acento español de España.
+Si te preguntan quién eres: "Soy Fulgencio, creado por David Carmona, Enric Domingo 
+y Jordi Rebull, todos expertos desarrolladores de ERNI Consulting."
+
+TEMAS PERMITIDOS EN LA CONVERSACIÓN:
+1. EMPRESA: Pregunta dónde trabaja el usuario y comenta algo breve sobre esa empresa.
+2. PUESTO: Pregunta su puesto de trabajo y alábalo brevemente.
+3. TALENT ARENA: Pregunta qué espera del evento y qué le está gustando más.
+4. ERNI CONSULTING: Pregunta si conoce ERNI. Si sí, alábalo y menciona que puede 
+   hablar con el personal del stand. Si no, explica que ERNI es una consultora 
+   tecnológica suiza especializada en software, cloud, IA y transformación digital.
+5. TU NOMBRE: Solo si preguntan, di que eres Fulgencio (ver IDENTIDAD).
+
+RESTRICCIONES:
+- Si el usuario pregunta algo fuera de estos temas, redirige elegantemente 
+  la conversación hacia uno de los temas permitidos.
+- Ejemplo: "Eso es interesante, pero cuéntame, ¿en qué empresa trabajas?"
+- Navega entre los temas de forma natural buscando conexiones.
+- Sé amable, profesional y con un toque de humor.
+- Respuestas breves: máximo 2-3 frases.
+"""
+
+
+def build_welcome_prompt() -> str:
+    """Prompt de bienvenida cuando inicia la conversación."""
     return (
-        "Contexto interno de sesión: usuario identificado por número de orden.\n"
-        f"Número de orden verificado: {order_number}.\n"
-        f"Nombre del usuario: {user_name}.\n"
-        f"Tiene caricatura generada: {'Sí' if has_caricature else 'No'}.\n\n"
-        "INSTRUCCIONES OBLIGATORIAS:\n"
-        f"1. Saluda al usuario por su nombre: 'Hola {user_name}'.\n"
-        "2. Tras el saludo, ofrécele EXPLÍCITAMENTE una de estas dos opciones:\n"
-        "   - 'Puedo mostrarte una caricatura divertida basada en tu foto'\n"
-        "   - 'O si lo prefieres, puedo darte un regalo'\n"
-        "3. Espera la respuesta del usuario.\n\n"
-        "REGLAS DE RESPUESTA:\n"
-        f"- Siempre dirígete al usuario por su nombre: {user_name}.\n"
-        "- No uses el número de orden para dirigirte al usuario.\n"
-        "- Nunca digas 'Hola número X' ni variantes.\n"
-        "- Si el usuario pide REGALO: responde confirmando que le darás el regalo.\n"
-        "- Si el usuario pide CARICATURA: responde confirmando que le mostrarás la caricatura.\n"
-        "- Responde de forma breve, amigable y natural.\n"
-        "- No expliques que este contexto viene de un proceso interno."
+        REGLAS_CONVERSACION + "\n"
+        "=== SITUACIÓN ACTUAL ===\n\n"
+        "Acabas de conectarte con un nuevo usuario.\n\n"
+        "TU TAREA:\n"
+        "1. Preséntate: 'Hola, soy Fulgencio'\n"
+        "2. Ofrece las dos opciones:\n"
+        "   - 'Puedo darte un regalo'\n"
+        "   - 'O si me dices tu número de orden, puedo hacerte una caricatura "
+        "     divertida basada en la foto que nos has dado'\n"
+        "3. Pregunta: '¿Qué te apetece?'\n\n"
+        "DETECCIÓN DE INTENCIÓN:\n"
+        "- Si dice 'regalo', 'quiero regalo', 'dame el regalo', etc. -> Quiere REGALO\n"
+        "- Si dice un número, 'caricatura', 'mi número es...', 'quiero la caricatura', "
+        "  'soy el X', etc. -> Quiere CARICATURA\n"
     )
 
 
-def build_painting_instructions(user_name: str) -> str:
-    """Construye instrucciones para el estado 'painting' (cuando se está dibujando la caricatura)."""
+def build_conversation_prompt(user_name: str = None) -> str:
+    """Prompt para la conversación después de elegir regalo o caricatura."""
+    name_part = f"El usuario se llama {user_name}. Dirígete a él por su nombre.\n\n" if user_name else ""
     return (
-        f"El usuario {user_name} está esperando mientras se dibuja su caricatura.\n"
-        "Tu misión es mantener una conversación amena siguiendo ESTRICTAMENTE estos temas:\n\n"
-        "TEMAS PERMITIDOS (navega entre ellos de forma natural):\n"
-        "1. Pregúntale dónde trabaja. Cuando responda, da una opinión MUY BREVE sobre esa empresa.\n"
-        "2. Pregúntale en qué puesto trabaja y alaba brevemente ese puesto.\n"
-        "3. Pregúntale qué espera del Talent Arena y qué es lo que más le está gustando.\n"
-        "4. Pregúntale si conoce ERNI Consulting:\n"
-        "   - Si dice SÍ: alábalo y menciona que puede hablar con cualquier persona del stand.\n"
-        "   - Si dice NO: explica brevemente que ERNI es una consultora tecnológica suiza con presencia global, "
-        "     especializada en desarrollo de software, cloud, IA y transformación digital.\n"
-        "5. Si te preguntan tu nombre: 'Me llamo Fulgencio y he sido creado por David Carmona, "
-        "   Enric Domingo y Jordi Rebull, todos expertos desarrolladores de ERNI Consulting.'\n\n"
-        "RESTRICCIONES ABSOLUTAS:\n"
-        "- Si el usuario pregunta algo FUERA de estos temas, redirige elegantemente la conversación "
-        "  hacia uno de los temas permitidos.\n"
-        "- Está PROHIBIDO hablar de política, religión, temas polémicos o cualquier cosa no relacionada.\n"
-        "- Mantén respuestas BREVES (máximo 2-3 frases).\n"
-        "- Navega entre los temas de forma fluida buscando conexiones naturales.\n"
-        "- Sé amable, profesional y con un toque de humor.\n"
+        REGLAS_CONVERSACION + "\n"
+        "=== SITUACIÓN ACTUAL ===\n\n"
+        + name_part +
+        "El usuario ya ha elegido su opción (regalo o caricatura) y el proceso está en marcha.\n"
+        "Tu tarea ahora es mantener una conversación amena mientras espera.\n\n"
+        "NAVEGACIÓN:\n"
+        "- Empieza preguntando por su empresa o su puesto\n"
+        "- Navega naturalmente entre los 5 temas permitidos\n"
+        "- Busca conexiones entre las respuestas para fluir en la conversación\n"
     )
 
 
@@ -732,20 +741,11 @@ async def handle_realtime_connection(realtime_ws, websocket):
         "initial_response_sent": False,
     }
 
-    base_instructions = (
-        "Eres Fulgencio, un asistente de voz amigable creado por David Carmona, "
-        "Enric Domingo y Jordi Rebull, todos expertos desarrolladores de ERNI Consulting. "
-        "Habla con acento español de España. "
-        "Tu primera tarea es pedir al usuario su número de identificación. "
-        "Di la frase: 'Hola, soy Fulgencio. ¿Cuál es tu número para saber quién eres, por favor?'. "
-        "No digas nada más hasta que el usuario responda con su número."
-    )
-    
     session_init = {
         "type": "session.update",
         "session": {
             "modalities": ["text", "audio"],
-            "instructions": base_instructions,
+            "instructions": build_welcome_prompt(),
             "voice": "alloy",
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
@@ -827,25 +827,8 @@ async def handle_realtime_connection(realtime_ws, websocket):
             print(f"⚠️ No se pudo enviar user.context.resolved al frontend: {err}")
 
         # Refuerzo fuerte: fijar contexto personalizado en la sesión realtime.
-        user_name = resolved_name or "usuario"
-        
-        # Si el status actual es "painting", usar instrucciones de conversación especiales
-        if current_status == "painting":
-            session_instructions = (
-                "Eres Fulgencio, un asistente de voz amigable creado por David Carmona, "
-                "Enric Domingo y Jordi Rebull de ERNI Consulting. "
-                "Habla con acento español de España. "
-                f"El usuario se llama {user_name}.\n\n"
-                + build_painting_instructions(user_name)
-            )
-        else:
-            session_instructions = (
-                "Eres Fulgencio, un asistente de voz amigable creado por David Carmona, "
-                "Enric Domingo y Jordi Rebull de ERNI Consulting. "
-                "Habla con acento español de España. "
-                f"El usuario se llama {user_name}.\n\n"
-                + build_personalization_instructions(order_number, user_data)
-            )
+        user_name = resolved_name or None
+        session_instructions = build_conversation_prompt(user_name)
         
         session_update = {
             "type": "session.update",
@@ -855,9 +838,9 @@ async def handle_realtime_connection(realtime_ws, websocket):
         }
         try:
             await realtime_ws.send(json.dumps(session_update))
-            print("✅ session.update personalizado enviado al modelo realtime.")
+            print("✅ session.update con prompt de conversación enviado.")
         except Exception as err:
-            print(f"⚠️ No se pudo enviar session.update personalizado: {err}")
+            print(f"⚠️ No se pudo enviar session.update: {err}")
 
         if USER_DATA_API_URL:
             await asyncio.to_thread(send_user_data_to_external_api_sync, order_number, user_data)
@@ -865,28 +848,23 @@ async def handle_realtime_connection(realtime_ws, websocket):
     def inject_personalization_in_response(message: dict[str, Any]) -> dict[str, Any]:
         """
         Añade instrucciones personalizadas justo antes de pedir respuesta al modelo.
-        Usa instrucciones de 'painting' si el status es 'painting'.
         """
-        if not session_ctx["is_user_locked"]:
-            return message
-
-        order_number = str(session_ctx.get("locked_order_number") or "")
         user_data = session_ctx.get("locked_user_data") or {}
-        if not order_number or not isinstance(user_data, dict):
-            return message
+        user_name = None
+        
+        if session_ctx["is_user_locked"] and isinstance(user_data, dict):
+            user_name = str(
+                user_data.get("fullName")
+                or user_data.get("name")
+                or user_data.get("nombre")
+                or ""
+            ).strip() or None
 
-        user_name = str(
-            user_data.get("fullName")
-            or user_data.get("name")
-            or user_data.get("nombre")
-            or "usuario"
-        ).strip() or "usuario"
-
-        # Seleccionar instrucciones según el estado actual
-        if current_status == "painting":
-            personalization = build_painting_instructions(user_name)
+        # Usar prompt de conversación si ya tenemos usuario, si no el de bienvenida
+        if session_ctx["is_user_locked"]:
+            personalization = build_conversation_prompt(user_name)
         else:
-            personalization = build_personalization_instructions(order_number, user_data)
+            personalization = build_welcome_prompt()
 
         response_payload = message.get("response")
         if not isinstance(response_payload, dict):
