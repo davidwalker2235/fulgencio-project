@@ -139,12 +139,9 @@ resource "azurerm_container_app" "backend" {
         value = var.voice_agent_type
       }
 
-      dynamic "env" {
-        for_each = var.erni_agent_url != "" ? { "erni_agent_url" = var.erni_agent_url } : {}
-        content {
-          name        = "ERNI_AGENT_URL"
-          secret_name = "erni-agent-url"
-        }
+      env {
+        name        = "ERNI_AGENT_URL"
+        secret_name = "erni-agent-url"
       }
 
       env {
@@ -200,12 +197,9 @@ resource "azurerm_container_app" "backend" {
     value = var.azure_openai_api_key
   }
 
-  dynamic "secret" {
-    for_each = var.erni_agent_url != "" ? { "erni_agent_url" = var.erni_agent_url } : {}
-    content {
-      name  = "erni-agent-url"
-      value = var.erni_agent_url
-    }
+  secret {
+    name  = "erni-agent-url"
+    value = var.erni_agent_url
   }
 
   tags = var.tags
