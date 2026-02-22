@@ -142,7 +142,7 @@ variable "azure_openai_image_api_version" {
 variable "azure_openai_image_prompt" {
   description = "Prompt para generación de caricaturas"
   type        = string
-  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style."
+  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. Generate only the strongest contours so the resulting strokes can be used as vector paths for robotic arm drawing. I want the lines to be fine and the details as minimalist as possible."
 }
 
 variable "azure_openai_image_endpoint" {

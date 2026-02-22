@@ -69,7 +69,7 @@ AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
 )
 AZURE_OPENAI_IMAGE_PROMPT = os.getenv(
     "AZURE_OPENAI_IMAGE_PROMPT",
-    "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. Generate only the strongest contours so the resulting strokes can be used as vector paths for robotic arm drawing.",
+    "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. Generate only the strongest contours so the resulting strokes can be used as vector paths for robotic arm drawing. I want the lines to be fine and the details as minimalist as possible.",
 )
 AZURE_OPENAI_IMAGE_ENDPOINT = os.getenv(
     "AZURE_OPENAI_IMAGE_ENDPOINT",
