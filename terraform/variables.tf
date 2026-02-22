@@ -112,6 +112,58 @@ variable "cors_origins" {
   default     = "https://fulgencio-frontend.*.azurecontainerapps.io"
 }
 
+# Voice agent (erni_agent | azure_agent)
+variable "voice_agent_type" {
+  description = "Tipo de agente de voz: erni_agent o azure_agent"
+  type        = string
+  default     = "erni_agent"
+}
+
+variable "erni_agent_url" {
+  description = "URL del WebSocket de Erni Agent (incluye credenciales)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# Imagen / caricaturas (Azure OpenAI gpt-image-1.5)
+variable "model_image_name" {
+  description = "Nombre del modelo de imagen Azure OpenAI"
+  type        = string
+  default     = "gpt-image-1.5"
+}
+
+variable "azure_openai_image_api_version" {
+  description = "Versión de la API de generación de imágenes"
+  type        = string
+  default     = "2025-04-01-preview"
+}
+
+variable "azure_openai_image_prompt" {
+  description = "Prompt para generación de caricaturas"
+  type        = string
+  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style."
+}
+
+variable "azure_openai_image_endpoint" {
+  description = "Endpoint de generación de imágenes (vacío = se construye desde azure_openai_endpoint)"
+  type        = string
+  default     = ""
+}
+
+variable "azure_openai_image_edits_endpoint" {
+  description = "Endpoint de edición de imágenes para caricaturas (vacío = se construye desde azure_openai_endpoint)"
+  type        = string
+  default     = ""
+}
+
+# Firebase (backend: guardar caricaturas en Realtime Database)
+variable "firebase_database_url" {
+  description = "URL de Firebase Realtime Database para el backend"
+  type        = string
+  default     = ""
+}
+
 # Tags de imagen para forzar nueva revisión en cada deploy (evita reinicio manual)
 variable "backend_image_tag" {
   description = "Tag de la imagen backend (usar github.sha en CI para que Container Apps detecte cambios)"
