@@ -26,23 +26,25 @@ class VoiceAgent(str, Enum):
 
 app = FastAPI(title="GPT Realtime Voice API")
 
-cors_origins = [
-    o.strip() for o in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"
-    ).split(",") if o.strip()
-]
+_raw_cors = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080",
+)
+cors_origins = [o.strip() for o in _raw_cors.split(",") if o.strip()]
 
-# Permite orígenes de Azure Container Apps (fulgencio-frontend.<env>.azurecontainerapps.io)
+# Quitar orígenes que son patrones con * (no son coincidencia exacta)
+cors_origins_exact = [o for o in cors_origins if "*" not in o]
+
+# Regex para Azure Container Apps: cualquier subdominio .azurecontainerapps.io
 cors_origin_regex = os.getenv(
     "CORS_ORIGIN_REGEX",
-    r"^https://fulgencio-frontend\.[a-z0-9.-]+\.azurecontainerapps\.io$",
+    r"^https://[a-zA-Z0-9][a-zA-Z0-9.-]*\.azurecontainerapps\.io$",
 ).strip()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_origin_regex=cors_origin_regex if cors_origin_regex else None,
+    allow_origins=cors_origins_exact,
+    allow_origin_regex=cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
