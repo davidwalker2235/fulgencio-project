@@ -140,7 +140,7 @@ resource "azurerm_container_app" "backend" {
       }
 
       dynamic "env" {
-        for_each = var.erni_agent_url != "" ? { "erni_agent_url" = true } : {}
+        for_each = var.erni_agent_url != "" ? { "erni_agent_url" = var.erni_agent_url } : {}
         content {
           name        = "ERNI_AGENT_URL"
           secret_name = "erni-agent-url"
@@ -201,7 +201,7 @@ resource "azurerm_container_app" "backend" {
   }
 
   dynamic "secret" {
-    for_each = var.erni_agent_url != "" ? { "erni_agent_url" = true } : {}
+    for_each = var.erni_agent_url != "" ? { "erni_agent_url" = var.erni_agent_url } : {}
     content {
       name  = "erni-agent-url"
       value = var.erni_agent_url
