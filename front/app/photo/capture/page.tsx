@@ -109,6 +109,7 @@ function PhotoCaptureContent() {
 
       // Guardar datos básicos en Firebase
       await FirebaseService.write(`users/${userKey}`, {
+        userId: userKey,
         fullName,
         email,
         photo: photo,

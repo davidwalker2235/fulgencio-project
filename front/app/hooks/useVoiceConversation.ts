@@ -404,7 +404,16 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       onMessage("error", (data: WebSocketMessage) => {
-        setError((data.message as string || data.error?.message as string) || "Error desconocido");
+        const directMessage =
+          typeof data.message === "string" ? data.message : "";
+        const nestedMessage =
+          typeof data.error === "object" &&
+          data.error !== null &&
+          "message" in data.error &&
+          typeof (data.error as { message?: unknown }).message === "string"
+            ? (data.error as { message: string }).message
+            : "";
+        setError(directMessage || nestedMessage || "Error desconocido");
         setConnectionStatus("Disconnected");
       });
 
