@@ -159,6 +159,15 @@ function PhotoCaptureContent() {
       className="min-h-screen w-full flex flex-col"
       style={{ backgroundColor: "#033778" }}
     >
+      {isLoading && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex flex-col items-center justify-center gap-4">
+          <div className="w-12 h-12 rounded-full border-4 border-white/30 border-t-white animate-spin" />
+          <p className="text-white text-base font-medium">
+            Processing photo, please wait...
+          </p>
+        </div>
+      )}
+
       {/* Header with Logo */}
       <div className="w-full flex justify-center pt-6 pb-4 px-4">
         <div className="relative w-full max-w-[200px] sm:max-w-[240px] aspect-[3/1]">
