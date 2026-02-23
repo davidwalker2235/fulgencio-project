@@ -98,14 +98,16 @@ export default function PhotoFormPage() {
           {/* Lorem Ipsum Text */}
           <div className="text-white text-sm sm:text-base leading-relaxed text-center px-2">
             <p>
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
-              Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+            Please enter your name and email so that our robot can identify you.
             </p>
             <p className="mt-2">
-              Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+            Your photo will be deleted once the experience is finished.
             </p>
             <p className="mt-2">
-              Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.
+            Once the photo has been processed, you will be given a number that you will need to provide to the robot.
+            </p>
+            <p className="mt-2">
+            Please, don't forget the number.
             </p>
           </div>
 
