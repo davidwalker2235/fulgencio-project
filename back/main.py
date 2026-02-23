@@ -360,6 +360,140 @@ class CaricatureGenerationRequest(BaseModel):
     photoBase64: str
 
 
+class SummaryMessage(BaseModel):
+    role: str
+    content: str
+
+
+class TranscriptionSummaryRequest(BaseModel):
+    messages: list[SummaryMessage]
+
+
+def extract_user_messages_for_summary(messages: list[SummaryMessage]) -> list[str]:
+    """
+    Extrae únicamente los mensajes del usuario con contenido válido.
+    """
+    result: list[str] = []
+    for item in messages:
+        role = str(getattr(item, "role", "") or "").strip().lower()
+        content = str(getattr(item, "content", "") or "").strip()
+        if role == "user" and content:
+            result.append(content)
+    return result
+
+
+async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) -> str:
+    """
+    Usa GPT Realtime en modo texto para resumir solo los mensajes de usuario.
+    """
+    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
+        raise RuntimeError("Azure OpenAI no configurado para resumen")
+
+    endpoint_base = AZURE_OPENAI_ENDPOINT.rstrip("/")
+    if endpoint_base.startswith("https://"):
+        endpoint_base = endpoint_base.replace("https://", "wss://")
+    elif endpoint_base.startswith("http://"):
+        endpoint_base = endpoint_base.replace("http://", "ws://")
+
+    headers = {"api-key": AZURE_OPENAI_API_KEY}
+    realtime_url = (
+        f"{endpoint_base}/openai/realtime?deployment={MODEL_NAME}"
+        f"&api-version={AZURE_OPENAI_API_VERSION}"
+    )
+
+    summary_prompt = (
+        "Eres un asistente que resume conversaciones.\n"
+        "Debes usar EXCLUSIVAMENTE los mensajes del usuario.\n"
+        "No incluyas respuestas del asistente ni inventes información.\n"
+        "Devuelve un resumen breve y claro en español (2-4 frases).\n\n"
+        "Mensajes del usuario:\n"
+        + "\n".join(f"- {msg}" for msg in user_messages)
+    )
+
+    async def run_with_url(url: str) -> str:
+        async with websockets.connect(url, additional_headers=headers) as realtime_ws:
+            session_init = {
+                "type": "session.update",
+                "session": {
+                    "modalities": ["text"],
+                    "instructions": (
+                        "Resume únicamente lo que dijo el usuario. "
+                        "No uses información del asistente."
+                    ),
+                },
+            }
+            await realtime_ws.send(json.dumps(session_init))
+
+            await realtime_ws.send(
+                json.dumps(
+                    {
+                        "type": "conversation.item.create",
+                        "item": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": summary_prompt}],
+                        },
+                    }
+                )
+            )
+
+            await realtime_ws.send(
+                json.dumps(
+                    {
+                        "type": "response.create",
+                        "response": {"modalities": ["text"]},
+                    }
+                )
+            )
+
+            chunks: list[str] = []
+            for _ in range(200):
+                raw = await asyncio.wait_for(realtime_ws.recv(), timeout=25)
+                if not isinstance(raw, str):
+                    continue
+
+                data = json.loads(raw)
+                event_type = str(data.get("type") or "")
+
+                if event_type in {
+                    "conversation.item.output_text.delta",
+                    "response.output_text.delta",
+                    "response.text.delta",
+                }:
+                    delta = data.get("delta")
+                    if isinstance(delta, str) and delta:
+                        chunks.append(delta)
+                    continue
+
+                if event_type in {
+                    "conversation.item.output_text.done",
+                    "response.output_text.done",
+                    "response.text.done",
+                }:
+                    text = data.get("text")
+                    if isinstance(text, str) and text.strip():
+                        return text.strip()
+                    continue
+
+                if event_type == "response.done":
+                    break
+
+            joined = "".join(chunks).strip()
+            if joined:
+                return joined
+            raise RuntimeError("No se recibió texto de resumen desde GPT Realtime")
+
+    try:
+        return await run_with_url(realtime_url)
+    except Exception as first_err:
+        print(f"⚠️ Fallo resumen con deployment, reintentando con model: {first_err}")
+        realtime_url_model = (
+            f"{endpoint_base}/openai/realtime?model={MODEL_NAME}"
+            f"&api-version={AZURE_OPENAI_API_VERSION}"
+        )
+        return await run_with_url(realtime_url_model)
+
+
 @app.on_event("startup")
 async def on_startup():
     """Inicializa Firebase y listener de status al arrancar."""
@@ -389,6 +523,29 @@ async def health():
         "endpoint_configured": bool(AZURE_OPENAI_ENDPOINT),
         "api_key_configured": bool(AZURE_OPENAI_API_KEY),
     }
+
+
+@app.post("/transcriptions/summarize")
+async def summarize_transcriptions(payload: TranscriptionSummaryRequest):
+    """
+    Resume la conversación usando GPT Realtime en texto, tomando solo mensajes user.
+    """
+    user_messages = extract_user_messages_for_summary(payload.messages)
+    if not user_messages:
+        return {
+            "summary": "",
+            "userMessageCount": 0,
+        }
+
+    try:
+        summary = await summarize_user_messages_with_gpt_realtime(user_messages)
+        return {
+            "summary": summary,
+            "userMessageCount": len(user_messages),
+        }
+    except Exception as err:
+        print(f"❌ Error generando resumen de transcripción: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
 
 
 @app.post("/photo/generate-caricature")

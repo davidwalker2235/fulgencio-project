@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useWebSocket } from "./useWebSocket";
 import { useAudioRecording } from "./useAudioRecording";
 import { useAudioPlayback } from "./useAudioPlayback";
-import { WEBSOCKET_URL, VOICE_DETECTION } from "../constants";
+import { API_BASE_URL, WEBSOCKET_URL, VOICE_DETECTION } from "../constants";
 import {
   Message,
   ConnectionStatus,
@@ -604,12 +604,61 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       silenceTimerRef.current = null;
     }
 
-    // Guardar transcripción priorizando userId de currentUser; fallback a activeUserId.
+    // Guardar resumen (solo mensajes user) priorizando userId de currentUser; fallback a activeUserId.
     const storageUserId = currentUserNodeUserId || activeUserId;
     if (storageUserId) {
       const timestamp = Date.now();
-      write(`users/${storageUserId}/transcriptions/${timestamp}`, transcription);
-      console.log(`Transcripción guardada en users/${storageUserId}/transcriptions/${timestamp}`);
+      const userMessagesOnly = transcription
+        .filter((msg) => msg.role === "user")
+        .map((msg) => msg.content.trim())
+        .filter((msg) => msg.length > 0);
+      const fallbackSummary = userMessagesOnly.join(" ").trim();
+
+      void (async () => {
+        let summaryText = fallbackSummary;
+        try {
+          const response = await fetch(`${API_BASE_URL}/transcriptions/summarize`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messages: transcription.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+              })),
+            }),
+          });
+
+          if (response.ok) {
+            const data: unknown = await response.json();
+            if (
+              typeof data === "object" &&
+              data !== null &&
+              "summary" in data &&
+              typeof (data as { summary?: unknown }).summary === "string"
+            ) {
+              const candidate = (data as { summary: string }).summary.trim();
+              if (candidate) {
+                summaryText = candidate;
+              }
+            }
+          } else {
+            const errorBody = await response.text();
+            console.error("❌ Error generando resumen en backend:", response.status, errorBody);
+          }
+        } catch (err) {
+          console.error("❌ Error llamando endpoint de resumen:", err);
+        }
+
+        await write(`users/${storageUserId}/transcriptions/${timestamp}`, {
+          summary: summaryText,
+          generatedAt: new Date().toISOString(),
+          userMessageCount: userMessagesOnly.length,
+          source: "gpt-realtime-user-only",
+        });
+        console.log(`Resumen guardado en users/${storageUserId}/transcriptions/${timestamp}`);
+      })();
       
       // Limpiar el ID del usuario activo después de guardar
       setActiveUserId(null);
@@ -618,7 +667,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     }
 
     // Al detener conversación, limpiar siempre currentUser.
-    write("currentUser", "null").catch((err) => {
+    write("currentUser", null).catch((err) => {
       console.error("❌ Error reseteando currentUser a null:", err);
     });
 
