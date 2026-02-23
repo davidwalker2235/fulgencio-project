@@ -164,6 +164,13 @@ variable "firebase_database_url" {
   default     = ""
 }
 
+variable "firebase_service_account_json" {
+  description = "JSON del service account de Firebase Admin SDK para backend"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Tags de imagen para forzar nueva revisión en cada deploy (evita reinicio manual)
 variable "backend_image_tag" {
   description = "Tag de la imagen backend (usar github.sha en CI para que Container Apps detecte cambios)"

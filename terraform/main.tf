@@ -173,6 +173,11 @@ resource "azurerm_container_app" "backend" {
         name  = "FIREBASE_DATABASE_URL"
         value = var.firebase_database_url
       }
+
+      env {
+        name        = "FIREBASE_SERVICE_ACCOUNT_JSON"
+        secret_name = "firebase-service-account-json"
+      }
     }
   }
 
@@ -200,6 +205,11 @@ resource "azurerm_container_app" "backend" {
   secret {
     name  = "erni-agent-url"
     value = var.erni_agent_url
+  }
+
+  secret {
+    name  = "firebase-service-account-json"
+    value = var.firebase_service_account_json
   }
 
   tags = var.tags

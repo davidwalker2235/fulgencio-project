@@ -79,6 +79,7 @@ jobs:
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
           TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
           TF_VAR_firebase_database_url: ${{ secrets.FIREBASE_DATABASE_URL }}
+          TF_VAR_firebase_service_account_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         continue-on-error: true
 
       - name: Terraform Plan (ACR and dependencies)
@@ -92,6 +93,7 @@ jobs:
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
           TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
           TF_VAR_firebase_database_url: ${{ secrets.FIREBASE_DATABASE_URL }}
+          TF_VAR_firebase_service_account_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         continue-on-error: true
 
       - name: Terraform Apply (ACR and dependencies)
@@ -110,6 +112,7 @@ jobs:
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
           TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
           TF_VAR_firebase_database_url: ${{ secrets.FIREBASE_DATABASE_URL }}
+          TF_VAR_firebase_service_account_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
   build-and-push:
     needs: setup-infrastructure
@@ -323,6 +326,7 @@ jobs:
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
           TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
           TF_VAR_firebase_database_url: ${{ secrets.FIREBASE_DATABASE_URL }}
+          TF_VAR_firebase_service_account_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TF_VAR_backend_image_tag: ${{ github.sha }}
           TF_VAR_frontend_image_tag: ${{ github.sha }}
         continue-on-error: true
@@ -338,6 +342,7 @@ jobs:
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
           TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
           TF_VAR_firebase_database_url: ${{ secrets.FIREBASE_DATABASE_URL }}
+          TF_VAR_firebase_service_account_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TF_VAR_backend_image_tag: ${{ github.sha }}
           TF_VAR_frontend_image_tag: ${{ github.sha }}
 
@@ -374,6 +379,7 @@ jobs:
           TF_VAR_model_name: ${{ secrets.MODEL_NAME }}
           TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
           TF_VAR_firebase_database_url: ${{ secrets.FIREBASE_DATABASE_URL }}
+          TF_VAR_firebase_service_account_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TF_VAR_backend_image_tag: ${{ github.sha }}
           TF_VAR_frontend_image_tag: ${{ github.sha }}
 

@@ -4,16 +4,19 @@ import datetime
 import json
 import os
 import sys
+import threading
 import urllib.error
 import urllib.request
 from enum import Enum
 from typing import Any, Optional
 
+import firebase_admin
 import requests
 import websockets
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from firebase_admin import credentials, db
 from openai import AzureOpenAI
 from pydantic import BaseModel
 
@@ -60,6 +63,7 @@ VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
 
 # Configuración de Firebase
 FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
+FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
 
 # Configuración de generación de imágenes (caricaturas)
 MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
@@ -89,6 +93,14 @@ AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
 )
 
 client: Optional[AzureOpenAI] = None
+firebase_app: Optional[firebase_admin.App] = None
+status_listener_started = False
+current_status = "idle"
+
+# Sesiones WebSocket activas para enviar eventos de estado en tiempo real.
+active_websockets: set[WebSocket] = set()
+active_websockets_lock = threading.Lock()
+main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 
 if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
     client = AzureOpenAI(
@@ -96,6 +108,110 @@ if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
         api_version=AZURE_OPENAI_API_VERSION,
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
     )
+
+
+def _sanitize_service_account_json(raw_json: str) -> str:
+    raw = (raw_json or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+        raw = raw[1:-1]
+    return raw
+
+
+def initialize_firebase_admin() -> None:
+    """
+    Inicializa Firebase Admin SDK usando FIREBASE_SERVICE_ACCOUNT_JSON.
+    """
+    global firebase_app
+
+    if firebase_app is not None:
+        return
+
+    if not FIREBASE_DATABASE_URL:
+        print("⚠️ FIREBASE_DATABASE_URL no configurado; no se inicializa Firebase Admin.")
+        return
+    if not FIREBASE_SERVICE_ACCOUNT_JSON:
+        print("⚠️ FIREBASE_SERVICE_ACCOUNT_JSON no configurado; no se inicializa Firebase Admin.")
+        return
+
+    try:
+        service_account_json = _sanitize_service_account_json(FIREBASE_SERVICE_ACCOUNT_JSON)
+        service_account_info = json.loads(service_account_json)
+        private_key = service_account_info.get("private_key")
+        if isinstance(private_key, str):
+            service_account_info["private_key"] = private_key.replace("\\n", "\n")
+
+        cred = credentials.Certificate(service_account_info)
+        firebase_app = firebase_admin.initialize_app(
+            cred,
+            {"databaseURL": FIREBASE_DATABASE_URL},
+        )
+        print("✅ Firebase Admin inicializado correctamente")
+    except Exception as err:
+        print(f"❌ Error inicializando Firebase Admin: {err}")
+
+
+async def broadcast_status_change(new_status: str) -> None:
+    """
+    Envía el nuevo status de Firebase a todas las sesiones activas.
+    """
+    with active_websockets_lock:
+        sockets = list(active_websockets)
+
+    if not sockets:
+        return
+
+    payload = {
+        "type": "firebase.status.changed",
+        "status": new_status,
+    }
+    for ws in sockets:
+        try:
+            if ws.client_state.name != "DISCONNECTED":
+                await ws.send_json(payload)
+        except Exception as err:
+            print(f"⚠️ Error enviando status a una sesión: {err}")
+
+
+def setup_firebase_status_listener() -> None:
+    """
+    Configura listener para cambios en el nodo 'status' de Firebase.
+    Cuando cambia a 'painting', notifica a las sesiones activas.
+    """
+    global status_listener_started, current_status
+
+    if status_listener_started:
+        return
+
+    if firebase_app is None:
+        print("⚠️ Firebase no inicializado, no se puede configurar listener de status")
+        return
+
+    def on_status_change(event) -> None:
+        global current_status
+        new_status = event.data
+        if new_status == current_status:
+            return
+
+        old_status = current_status
+        current_status = new_status if new_status else "idle"
+        print(f"📡 Status Firebase cambió: {old_status} -> {current_status}")
+
+        if current_status == "painting":
+            print("🎨 Estado 'painting' detectado - se aplicarán instrucciones de conversación")
+
+        if main_event_loop and main_event_loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                broadcast_status_change(current_status),
+                main_event_loop,
+            )
+
+    try:
+        ref = db.reference("status")
+        ref.listen(on_status_change)
+        status_listener_started = True
+        print("✅ Listener de status de Firebase configurado correctamente")
+    except Exception as e:
+        print(f"⚠️ Error configurando listener de status: {e}")
 
 
 def update_user_fields_in_realtime_db(order_number: str, fields: dict[str, Any]) -> bool:
@@ -244,6 +360,15 @@ class CaricatureGenerationRequest(BaseModel):
     photoBase64: str
 
 
+@app.on_event("startup")
+async def on_startup():
+    """Inicializa Firebase y listener de status al arrancar."""
+    global main_event_loop
+    main_event_loop = asyncio.get_running_loop()
+    initialize_firebase_admin()
+    setup_firebase_status_listener()
+
+
 @app.get("/")
 async def root():
     """Endpoint de salud"""
@@ -330,13 +455,20 @@ async def websocket_endpoint(websocket: WebSocket):
     Según VOICE_AGENT_TYPE, conecta con Erni Agent o Azure OpenAI Realtime.
     """
     await websocket.accept()
-    
-    print(f"Usando agente de voz: {VOICE_AGENT_TYPE.value}")
-    
-    if VOICE_AGENT_TYPE == VoiceAgent.ERNI_AGENT:
-        await handle_erni_agent(websocket)
-    else:
-        await handle_azure_agent(websocket)
+
+    with active_websockets_lock:
+        active_websockets.add(websocket)
+
+    try:
+        print(f"Usando agente de voz: {VOICE_AGENT_TYPE.value}")
+
+        if VOICE_AGENT_TYPE == VoiceAgent.ERNI_AGENT:
+            await handle_erni_agent(websocket)
+        else:
+            await handle_azure_agent(websocket)
+    finally:
+        with active_websockets_lock:
+            active_websockets.discard(websocket)
 
 
 async def handle_erni_agent(websocket: WebSocket):
