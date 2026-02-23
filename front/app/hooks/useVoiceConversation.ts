@@ -3,7 +3,12 @@ import { useWebSocket } from "./useWebSocket";
 import { useAudioRecording } from "./useAudioRecording";
 import { useAudioPlayback } from "./useAudioPlayback";
 import { WEBSOCKET_URL, VOICE_DETECTION } from "../constants";
-import { Message, ConnectionStatus, WebSocketMessage } from "../types";
+import {
+  Message,
+  ConnectionStatus,
+  WebSocketMessage,
+  CurrentUserNode,
+} from "../types";
 import {
   arrayBufferToFloat32,
   base64ToFloat32,
@@ -17,6 +22,7 @@ interface UseVoiceConversationReturn {
   error: string;
   connectionStatus: ConnectionStatus;
   isSpeaking: boolean;
+  currentUserPhoto: string | null;
   activeUserId: string | null;
   startConversation: () => Promise<void>;
   stopConversation: (transcripción: Message[]) => void;
@@ -36,6 +42,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [currentUserPhoto, setCurrentUserPhoto] = useState<string | null>(null);
 
   const {
     connect,
@@ -48,7 +55,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const { startRecording, stopRecording, isRecording: audioIsRecording } =
     useAudioRecording();
   const { playAudio, stopAllAudio, hasActiveAudio } = useAudioPlayback();
-  const { write, read, subscribe, loading, error: firebaseError } = useFirebase();
+  const { write, subscribe } = useFirebase();
 
   const currentResponseIdRef = useRef<string | null>(null);
   const isUserSpeakingRef = useRef<boolean>(false);
@@ -70,6 +77,21 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       }
     };
   }, [hasActiveAudio]);
+
+  // Suscripción a currentUser para mostrar/ocultar panel de foto.
+  useEffect(() => {
+    const unsubscribe = subscribe<CurrentUserNode>("currentUser", (data) => {
+      if (data && typeof data.photo === "string" && data.photo.trim().length > 0) {
+        setCurrentUserPhoto(data.photo);
+        return;
+      }
+      setCurrentUserPhoto(null);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [subscribe]);
 
   // Limpiar recursos al desmontar
   useEffect(() => {
@@ -436,7 +458,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       // Fin de respuesta del agente
-      onMessage("agent_end", (data: WebSocketMessage) => {
+      onMessage("agent_end", () => {
         console.log("✅ [Erni] Agent respuesta completada");
         currentResponseIdRef.current = null;
       });
@@ -530,6 +552,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     audioIsRecording,
     hasActiveAudio,
     generateUserId,
+    handleUserSpeaking,
   ]);
 
   const stopConversation = useCallback((transcription: Message[]) => {
@@ -570,6 +593,11 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     } else {
       console.warn("⚠️ No hay ID de usuario activo, no se guardará la transcripción");
     }
+
+    // Al detener conversación, limpiar siempre currentUser.
+    write("currentUser", "null").catch((err) => {
+      console.error("❌ Error reseteando currentUser a null:", err);
+    });
 
     // Resetear estados
     setIsRecording(false);
@@ -649,6 +677,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     error,
     connectionStatus,
     isSpeaking,
+    currentUserPhoto,
     activeUserId,
     startConversation,
     stopConversation,

@@ -7,6 +7,7 @@ import ConnectionStatus from "./ConnectionStatus";
 import ErrorDisplay from "./ErrorDisplay";
 import VideoLoop from "./VideoLoop";
 import Subtitles from "./Subtitles";
+import CurrentUserPhotoPanel from "./CurrentUserPhotoPanel";
 
 export default function VoiceConversation() {
   const {
@@ -15,6 +16,7 @@ export default function VoiceConversation() {
     error,
     connectionStatus,
     isSpeaking,
+    currentUserPhoto,
     toggleConversation,
     clearError,
   } = useVoiceConversation();
@@ -31,6 +33,7 @@ export default function VoiceConversation() {
       <div className="fixed top-0 left-0 left-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <ConnectionStatus status={connectionStatus} />
       </div>
+      <CurrentUserPhotoPanel photoBase64={currentUserPhoto} />
       <div className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center p-8 pointer-events-none">
         <div className="w-full max-w-4xl space-y-4 pointer-events-auto">
           <Subtitles messages={transcription} isSpeaking={isSpeaking} isRecording={isRecording} />

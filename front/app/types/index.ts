@@ -9,7 +9,16 @@ export type PhotoState = "idle" | "takingPhoto" | "photoTaken";
 
 export interface WebSocketMessage {
   type: string;
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+export interface CurrentUserNode {
+  caricatures: string[];
+  caricaturesTimestamp: string;
+  email: string;
+  fullName: string;
+  photo: string;
+  timestamp: string;
 }
 
 export interface SessionConfig {
