@@ -43,6 +43,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     useState<ConnectionStatus>("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentUserPhoto, setCurrentUserPhoto] = useState<string | null>(null);
+  const [currentUserNodeUserId, setCurrentUserNodeUserId] = useState<string | null>(null);
 
   const {
     connect,
@@ -81,10 +82,22 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   // Suscripción a currentUser para mostrar/ocultar panel de foto.
   useEffect(() => {
     const unsubscribe = subscribe<CurrentUserNode>("currentUser", (data) => {
-      if (data && typeof data.photo === "string" && data.photo.trim().length > 0) {
-        setCurrentUserPhoto(data.photo);
-        return;
+      if (data && typeof data === "object") {
+        const maybeUserId = (data as CurrentUserNode).userId;
+        if (typeof maybeUserId === "string" && maybeUserId.trim().length > 0) {
+          setCurrentUserNodeUserId(maybeUserId.trim());
+        } else if (typeof maybeUserId === "number" && Number.isFinite(maybeUserId)) {
+          setCurrentUserNodeUserId(String(maybeUserId));
+        } else {
+          setCurrentUserNodeUserId(null);
+        }
+
+        if (typeof data.photo === "string" && data.photo.trim().length > 0) {
+          setCurrentUserPhoto(data.photo);
+          return;
+        }
       }
+      setCurrentUserNodeUserId(null);
       setCurrentUserPhoto(null);
     });
 
@@ -591,11 +604,12 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       silenceTimerRef.current = null;
     }
 
-    // Guardar la transcripción en la base de datos usando el ID del usuario activo
-    if (activeUserId) {
+    // Guardar transcripción priorizando userId de currentUser; fallback a activeUserId.
+    const storageUserId = currentUserNodeUserId || activeUserId;
+    if (storageUserId) {
       const timestamp = Date.now();
-      write(`users/${activeUserId}/transcriptions/${timestamp}`, transcription);
-      console.log(`Transcripción guardada en users/${activeUserId}/transcriptions/${timestamp}`);
+      write(`users/${storageUserId}/transcriptions/${timestamp}`, transcription);
+      console.log(`Transcripción guardada en users/${storageUserId}/transcriptions/${timestamp}`);
       
       // Limpiar el ID del usuario activo después de guardar
       setActiveUserId(null);
@@ -614,8 +628,9 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setConnectionStatus("Disconnected");
     currentResponseIdRef.current = null;
     isUserSpeakingRef.current = false;
+    setCurrentUserNodeUserId(null);
     setTranscription([]);
-  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, activeUserId]);
+  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, currentUserNodeUserId, activeUserId]);
 
   const toggleConversation = useCallback((transcription: Message[]) => {
     if (isRecording) {

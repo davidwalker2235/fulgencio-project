@@ -13,6 +13,7 @@ export interface WebSocketMessage {
 }
 
 export interface CurrentUserNode {
+  userId?: string | number;
   caricatures: string[];
   caricaturesTimestamp: string;
   email: string;
