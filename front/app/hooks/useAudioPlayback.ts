@@ -16,11 +16,19 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
   const isPlayingRef = useRef<boolean>(false);
   const nextPlayTimeRef = useRef<number>(0);
   const activeAudioSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const prebufferMsRef = useRef<number>(80);
+  const fadeSecondsRef = useRef<number>(0.005);
 
   const initializeAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext ||
-        (window as any).webkitAudioContext)({
+      const webkitAudioContext = (
+        window as Window & { webkitAudioContext?: typeof AudioContext }
+      ).webkitAudioContext;
+      const AudioContextCtor = window.AudioContext || webkitAudioContext;
+      if (!AudioContextCtor) {
+        throw new Error("AudioContext no soportado en este navegador");
+      }
+      audioContextRef.current = new AudioContextCtor({
         sampleRate: AUDIO_PROCESSING.sampleRate,
       });
     }
@@ -34,7 +42,7 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
       try {
         source.stop();
         source.disconnect();
-      } catch (err) {
+      } catch {
         // Ignorar errores si ya está detenida
       }
     });
@@ -48,29 +56,21 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
   const playAudioQueue = useCallback(() => {
     const audioContext = initializeAudioContext();
 
-    if (isPlayingRef.current || audioQueueRef.current.length === 0) {
+    if (audioQueueRef.current.length === 0) {
       return;
     }
 
     isPlayingRef.current = true;
 
-    const playNext = () => {
-      // Verificar si se canceló la reproducción
-      if (!isPlayingRef.current) {
-        return;
-      }
+    // Si nos hemos quedado atrás (gap), re-sincronizar con un pequeño prebuffer.
+    const currentTime = audioContext.currentTime;
+    if (nextPlayTimeRef.current < currentTime) {
+      nextPlayTimeRef.current = currentTime + prebufferMsRef.current / 1000;
+    }
 
-      if (audioQueueRef.current.length === 0) {
-        isPlayingRef.current = false;
-        activeAudioSourcesRef.current = [];
-        return;
-      }
-
+    while (audioQueueRef.current.length > 0) {
       const float32 = audioQueueRef.current.shift();
-      if (!float32) {
-        playNext();
-        return;
-      }
+      if (!float32) continue;
 
       try {
         const audioBuffer = audioContext.createBuffer(
@@ -82,40 +82,43 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
 
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
 
-        // Guardar referencia para poder detenerla si es necesario
-        activeAudioSourcesRef.current.push(source);
+        // Fade corto para evitar clicks al inicio/fin de cada chunk.
+        const gainNode = audioContext.createGain();
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
-        // Programar la reproducción para que sea secuencial
-        const currentTime = audioContext.currentTime;
-        const startTime = Math.max(currentTime, nextPlayTimeRef.current);
-        source.start(startTime);
-
-        // Calcular el tiempo de finalización
+        const startTime = Math.max(audioContext.currentTime, nextPlayTimeRef.current);
         const duration = audioBuffer.duration;
-        nextPlayTimeRef.current = startTime + duration;
+        const endTime = startTime + duration;
+        const fade = Math.min(fadeSecondsRef.current, duration / 2);
 
-        // Reproducir el siguiente chunk cuando termine este
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(1, startTime + fade);
+        gainNode.gain.setValueAtTime(1, Math.max(startTime + fade, endTime - fade));
+        gainNode.gain.linearRampToValueAtTime(0, endTime);
+
+        source.start(startTime);
+        nextPlayTimeRef.current = endTime;
+
+        activeAudioSourcesRef.current.push(source);
         source.onended = () => {
-          // Remover de la lista de fuentes activas
           activeAudioSourcesRef.current = activeAudioSourcesRef.current.filter(
             (s) => s !== source
           );
-          // Solo continuar si aún se está reproduciendo
-          if (isPlayingRef.current) {
-            playNext();
+          if (activeAudioSourcesRef.current.length === 0 && audioQueueRef.current.length === 0) {
+            isPlayingRef.current = false;
+          }
+          try {
+            gainNode.disconnect();
+          } catch {
+            // no-op
           }
         };
       } catch (err) {
         console.error("Error reproduciendo chunk de audio:", err);
-        if (isPlayingRef.current) {
-          playNext();
-        }
       }
-    };
-
-    playNext();
+    }
   }, [initializeAudioContext]);
 
   const playAudio = useCallback(
