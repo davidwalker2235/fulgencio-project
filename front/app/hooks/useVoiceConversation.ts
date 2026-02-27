@@ -57,7 +57,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const { startRecording, stopRecording, isRecording: audioIsRecording } =
     useAudioRecording();
   const { playAudio, stopAllAudio, hasActiveAudio } = useAudioPlayback();
-  const { write, subscribe } = useFirebase();
+  const { write, remove, subscribe } = useFirebase();
 
   const currentResponseIdRef = useRef<string | null>(null);
   const isUserSpeakingRef = useRef<boolean>(false);
@@ -667,7 +667,10 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         });
         console.log(`Resumen guardado en users/${storageUserId}/transcriptions/${timestamp}`);
       })();
-      
+
+      remove(`users/${storageUserId}/photo`).catch((err) => {
+        console.error(`❌ Error borrando users/${storageUserId}/photo:`, err);
+      });
     } else {
       console.warn("⚠️ robot_action.userId vacío o ausente, no se guardará la transcripción");
     }
@@ -689,7 +692,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setRobotActionUserId(null);
     setActiveUserId(null);
     setTranscription([]);
-  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, robotActionUserId]);
+  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, remove, robotActionUserId]);
 
   const toggleConversation = useCallback((transcription: Message[]) => {
     if (isRecording) {
