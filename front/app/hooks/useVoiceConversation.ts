@@ -8,6 +8,7 @@ import {
   ConnectionStatus,
   WebSocketMessage,
   CurrentUserNode,
+  RobotActionNode,
 } from "../types";
 import {
   arrayBufferToFloat32,
@@ -43,7 +44,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     useState<ConnectionStatus>("Disconnected");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentUserPhoto, setCurrentUserPhoto] = useState<string | null>(null);
-  const [currentUserNodeUserId, setCurrentUserNodeUserId] = useState<string | null>(null);
+  const [robotActionUserId, setRobotActionUserId] = useState<string | null>(null);
 
   const {
     connect,
@@ -83,22 +84,42 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   useEffect(() => {
     const unsubscribe = subscribe<CurrentUserNode>("currentUser", (data) => {
       if (data && typeof data === "object") {
-        const maybeUserId = (data as CurrentUserNode).userId;
-        if (typeof maybeUserId === "string" && maybeUserId.trim().length > 0) {
-          setCurrentUserNodeUserId(maybeUserId.trim());
-        } else if (typeof maybeUserId === "number" && Number.isFinite(maybeUserId)) {
-          setCurrentUserNodeUserId(String(maybeUserId));
-        } else {
-          setCurrentUserNodeUserId(null);
-        }
-
         if (typeof data.photo === "string" && data.photo.trim().length > 0) {
           setCurrentUserPhoto(data.photo);
           return;
         }
       }
-      setCurrentUserNodeUserId(null);
       setCurrentUserPhoto(null);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [subscribe]);
+
+  // Suscripción a robot_action para usar SIEMPRE su userId al guardar transcripciones.
+  useEffect(() => {
+    const normalizeUserId = (value: unknown): string | null => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+      }
+      return null;
+    };
+
+    const unsubscribe = subscribe<RobotActionNode>("robot_action", (data) => {
+      if (!data || typeof data !== "object") {
+        setRobotActionUserId(null);
+        setActiveUserId(null);
+        return;
+      }
+
+      const parsedUserId = normalizeUserId((data as RobotActionNode).userId);
+      setRobotActionUserId(parsedUserId);
+      setActiveUserId(parsedUserId);
     });
 
     return () => {
@@ -188,23 +209,10 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     [send, wsIsConnected, stopAllAudio, hasActiveAudio]
   );
 
-  // Función para generar un ID de usuario único
-  const generateUserId = useCallback((): string => {
-    // Generar ID único usando timestamp y random
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 15);
-    return `user_${timestamp}_${random}`;
-  }, []);
-
   const startConversation = useCallback(async () => {
     try {
       setError("");
       setConnectionStatus("Connecting");
-
-      // Generar ID único para este usuario/sesión
-      const userId = generateUserId();
-      setActiveUserId(userId);
-      console.log("🆔 ID de usuario generado:", userId);
 
       // Configurar handlers de mensajes WebSocket ANTES de conectar
       // Los handlers se guardarán y se aplicarán cuando se cree el servicio
@@ -573,7 +581,6 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     wsIsConnected,
     audioIsRecording,
     hasActiveAudio,
-    generateUserId,
     handleUserSpeaking,
   ]);
 
@@ -604,8 +611,9 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       silenceTimerRef.current = null;
     }
 
-    // Guardar resumen (solo mensajes user) priorizando userId de currentUser; fallback a activeUserId.
-    const storageUserId = currentUserNodeUserId || activeUserId;
+    // Guardar resumen (solo mensajes user) en users/{userId}/transcriptions,
+    // usando exclusivamente userId proveniente de robot_action.
+    const storageUserId = robotActionUserId;
     if (storageUserId) {
       const timestamp = Date.now();
       const userMessagesOnly = transcription
@@ -660,15 +668,16 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         console.log(`Resumen guardado en users/${storageUserId}/transcriptions/${timestamp}`);
       })();
       
-      // Limpiar el ID del usuario activo después de guardar
-      setActiveUserId(null);
     } else {
-      console.warn("⚠️ No hay ID de usuario activo, no se guardará la transcripción");
+      console.warn("⚠️ robot_action.userId vacío o ausente, no se guardará la transcripción");
     }
 
-    // Al detener conversación, limpiar siempre currentUser.
+    // Al detener conversación, limpiar siempre currentUser y robot_action.
     write("currentUser", null).catch((err) => {
       console.error("❌ Error reseteando currentUser a null:", err);
+    });
+    write("robot_action", null).catch((err) => {
+      console.error("❌ Error reseteando robot_action a null:", err);
     });
 
     // Resetear estados
@@ -677,9 +686,10 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setConnectionStatus("Disconnected");
     currentResponseIdRef.current = null;
     isUserSpeakingRef.current = false;
-    setCurrentUserNodeUserId(null);
+    setRobotActionUserId(null);
+    setActiveUserId(null);
     setTranscription([]);
-  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, currentUserNodeUserId, activeUserId]);
+  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, robotActionUserId]);
 
   const toggleConversation = useCallback((transcription: Message[]) => {
     if (isRecording) {

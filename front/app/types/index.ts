@@ -22,6 +22,14 @@ export interface CurrentUserNode {
   timestamp: string;
 }
 
+export interface RobotActionNode {
+  caricatureImage?: string;
+  fullName?: string;
+  timestamp?: number;
+  type?: string;
+  userId?: string | number;
+}
+
 export interface SessionConfig {
   modalities: string[];
   instructions: string;

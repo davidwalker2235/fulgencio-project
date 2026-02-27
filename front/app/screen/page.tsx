@@ -2,11 +2,84 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { onValue, ref } from "firebase/database";
+import { database } from "../../firebaseConfig";
+
+interface RobotActionNode {
+  caricatureImage?: string;
+  fullName?: string;
+  timestamp?: number;
+  type?: string;
+  userId?: string | number;
+}
 
 export default function Screen() {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const promoVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
+  const [hasRobotActionData, setHasRobotActionData] = useState(false);
+
+  const stopCamera = useCallback(() => {
+    const stream = cameraStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+
+    stopCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+        },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error("No se pudo iniciar la cámara:", error);
+    }
+  }, [stopCamera]);
+
+  useEffect(() => {
+    const robotActionRef = ref(database, "robot_action");
+    const unsubscribe = onValue(robotActionRef, (snapshot) => {
+      const data = snapshot.val() as unknown;
+
+      if (
+        data === null ||
+        data === undefined ||
+        (typeof data === "string" && data.trim() === "")
+      ) {
+        setHasRobotActionData(false);
+        return;
+      }
+
+      if (typeof data === "object") {
+        setHasRobotActionData(Object.keys(data).length > 0);
+        return;
+      }
+
+      setHasRobotActionData(Boolean(data));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const scheduleNextPlayback = useCallback(() => {
     if (timeoutRef.current) {
@@ -14,7 +87,7 @@ export default function Screen() {
     }
 
     timeoutRef.current = setTimeout(() => {
-      const video = videoRef.current;
+      const video = promoVideoRef.current;
       if (!video) return;
 
       video.currentTime = 0;
@@ -27,14 +100,33 @@ export default function Screen() {
   }, []);
 
   useEffect(() => {
-    scheduleNextPlayback();
+    if (hasRobotActionData) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setIsVideoVisible(false);
+      const promoVideo = promoVideoRef.current;
+      if (promoVideo) {
+        promoVideo.pause();
+        promoVideo.currentTime = 0;
+      }
+      void startCamera();
+      return;
+    }
 
+    stopCamera();
+    scheduleNextPlayback();
+  }, [hasRobotActionData, scheduleNextPlayback, startCamera, stopCamera]);
+
+  useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      stopCamera();
     };
-  }, [scheduleNextPlayback]);
+  }, [stopCamera]);
 
   const handleVideoEnded = () => {
     setIsVideoVisible(false);
@@ -117,25 +209,37 @@ export default function Screen() {
       </section>
 
       <section className="relative flex-1 min-h-0 w-full overflow-hidden bg-black">
-        {!isVideoVisible && (
-          <Image
-            src="/screen-image.png"
-            alt="Fondo de pantalla"
-            fill
-            className="object-cover"
-            sizes="100vw"
-            priority
+        {hasRobotActionData ? (
+          <video
+            ref={cameraVideoRef}
+            className="w-full h-full object-cover"
+            autoPlay
+            muted
+            playsInline
           />
-        )}
+        ) : (
+          <>
+            {!isVideoVisible && (
+              <Image
+                src="/screen-image.png"
+                alt="Fondo de pantalla"
+                fill
+                className="object-cover"
+                sizes="100vw"
+                priority
+              />
+            )}
 
-        <video
-          ref={videoRef}
-          className={`w-full h-full object-cover ${isVideoVisible ? "opacity-100" : "opacity-0"}`}
-          src="/the-ernian-journey.mp4"
-          muted
-          playsInline
-          onEnded={handleVideoEnded}
-        />
+            <video
+              ref={promoVideoRef}
+              className={`w-full h-full object-cover ${isVideoVisible ? "opacity-100" : "opacity-0"}`}
+              src="/the-ernian-journey.mp4"
+              muted
+              playsInline
+              onEnded={handleVideoEnded}
+            />
+          </>
+        )}
       </section>
     </div>
   );
