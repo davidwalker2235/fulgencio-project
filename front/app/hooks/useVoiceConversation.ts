@@ -36,6 +36,7 @@ interface UseVoiceConversationReturn {
  * Hook principal que orquesta toda la lógica de conversación de voz
  */
 export function useVoiceConversation(): UseVoiceConversationReturn {
+  const HALF_DUPLEX_RELEASE_MS = 800;
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [transcription, setTranscription] = useState<Message[]>([]);
@@ -64,6 +65,8 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const isInterruptedRef = useRef<boolean>(false);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const wasAssistantSpeakingRef = useRef<boolean>(false);
+  const halfDuplexHoldUntilRef = useRef<number>(0);
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
 
   // Monitorear el estado del audio para actualizar isSpeaking
@@ -71,6 +74,13 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     audioCheckIntervalRef.current = setInterval(() => {
       const hasAudio = hasActiveAudio();
       setIsSpeaking(hasAudio);
+
+      // Half-duplex: tras terminar el TTS mantenemos un pequeño hold
+      // para evitar que el micro capte el remanente del altavoz.
+      if (wasAssistantSpeakingRef.current && !hasAudio) {
+        halfDuplexHoldUntilRef.current = Date.now() + HALF_DUPLEX_RELEASE_MS;
+      }
+      wasAssistantSpeakingRef.current = hasAudio;
     }, 100); // Verificar cada 100ms
 
     return () => {
@@ -146,41 +156,29 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
 
   const handleAudioChunk = useCallback(
     (audioData: ArrayBuffer) => {
+      const isHalfDuplexBlocked =
+        hasActiveAudio() || Date.now() < halfDuplexHoldUntilRef.current;
+      if (isHalfDuplexBlocked) {
+        return;
+      }
+
       if (wsIsConnected() && audioIsRecording()) {
         send(audioData);
       }
     },
-    [send, wsIsConnected, audioIsRecording]
+    [send, wsIsConnected, audioIsRecording, hasActiveAudio]
   );
 
   const handleUserSpeaking = useCallback(
     (isSpeaking: boolean, wasSpeaking: boolean) => {
-      const audioIsActive = hasActiveAudio();
-
-      // Si el usuario empieza a hablar mientras la IA está hablando, cancelar INMEDIATAMENTE
-      if (isSpeaking && !wasSpeaking && audioIsActive) {
-        console.log("🚨 INTERRUPCIÓN DETECTADA - Usuario hablando mientras IA habla");
-        isInterruptedRef.current = true;
-        stopAllAudio();
-
-        // Si hay una respuesta activa, cancelarla en el servidor
-        if (currentResponseIdRef.current) {
-          try {
-            send({
-              type: "response.cancel",
-              response_id: currentResponseIdRef.current,
-            });
-            console.log("✅ Comando de cancelación enviado al servidor");
-          } catch (err) {
-            console.error("❌ Error enviando cancelación:", err);
-          }
-        }
-
-        // Limpiar timer de silencio si existe
+      const isHalfDuplexBlocked =
+        hasActiveAudio() || Date.now() < halfDuplexHoldUntilRef.current;
+      if (isHalfDuplexBlocked) {
         if (silenceTimerRef.current) {
           clearTimeout(silenceTimerRef.current);
           silenceTimerRef.current = null;
         }
+        return;
       }
 
       // Si el usuario deja de hablar, quitar la marca de interrupción
@@ -206,7 +204,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         }, VOICE_DETECTION.silenceDurationMs);
       }
     },
-    [send, wsIsConnected, stopAllAudio, hasActiveAudio]
+    [send, wsIsConnected, hasActiveAudio]
   );
 
   const startConversation = useCallback(async () => {
@@ -678,6 +676,9 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     // Al detener conversación, limpiar siempre currentUser y robot_action.
     write("currentUser", null).catch((err) => {
       console.error("❌ Error reseteando currentUser a null:", err);
+    });
+    write("current_user", null).catch((err) => {
+      console.error("❌ Error reseteando current_user a null:", err);
     });
     write("robot_action", null).catch((err) => {
       console.error("❌ Error reseteando robot_action a null:", err);
