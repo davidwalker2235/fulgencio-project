@@ -5,21 +5,13 @@ import Image from "next/image";
 import { onValue, ref } from "firebase/database";
 import { database } from "../../firebaseConfig";
 
-interface RobotActionNode {
-  caricatureImage?: string;
-  fullName?: string;
-  timestamp?: number;
-  type?: string;
-  userId?: string | number;
-}
-
 export default function Screen() {
   const promoVideoRef = useRef<HTMLVideoElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
-  const [hasRobotActionData, setHasRobotActionData] = useState(false);
+  const [isScreenOn, setIsScreenOn] = useState(false);
 
   const stopCamera = useCallback(() => {
     const stream = cameraStreamRef.current;
@@ -55,25 +47,14 @@ export default function Screen() {
   }, [stopCamera]);
 
   useEffect(() => {
-    const robotActionRef = ref(database, "robot_action");
-    const unsubscribe = onValue(robotActionRef, (snapshot) => {
-      const data = snapshot.val() as unknown;
-
-      if (
-        data === null ||
-        data === undefined ||
-        (typeof data === "string" && data.trim() === "")
-      ) {
-        setHasRobotActionData(false);
-        return;
-      }
-
-      if (typeof data === "object") {
-        setHasRobotActionData(Object.keys(data).length > 0);
-        return;
-      }
-
-      setHasRobotActionData(Boolean(data));
+    const statusRef = ref(database, "status");
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+      const status = snapshot.val();
+      setIsScreenOn(
+        status !== null &&
+          status !== undefined &&
+          String(status).toLowerCase() !== "idle"
+      );
     });
 
     return () => {
@@ -100,7 +81,7 @@ export default function Screen() {
   }, []);
 
   useEffect(() => {
-    if (hasRobotActionData) {
+    if (isScreenOn) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -117,7 +98,7 @@ export default function Screen() {
 
     stopCamera();
     scheduleNextPlayback();
-  }, [hasRobotActionData, scheduleNextPlayback, startCamera, stopCamera]);
+  }, [isScreenOn, scheduleNextPlayback, startCamera, stopCamera]);
 
   useEffect(() => {
     return () => {
@@ -217,7 +198,7 @@ export default function Screen() {
 
         {/* Parte inferior: imagen/vídeo (aprox. 40% del canvas) */}
         <section className="relative flex-[0_0_50%] min-h-0 w-full overflow-hidden bg-black">
-          {hasRobotActionData ? (
+          {isScreenOn ? (
             <video
               ref={cameraVideoRef}
               className="w-full h-full object-cover"

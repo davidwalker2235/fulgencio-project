@@ -8,6 +8,7 @@ export default function PhotoFormPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [linkedIn, setLinkedIn] = useState("");
   const [emailError, setEmailError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -56,6 +57,10 @@ export default function PhotoFormPage() {
       name: fullName.trim(),
       email: email.trim(),
     });
+    const linkedInTrimmed = linkedIn.trim();
+    if (linkedInTrimmed) {
+      params.set("linkedIn", linkedInTrimmed);
+    }
 
     // Si por cualquier motivo la navegación SPA falla (p.ej. error cargando el chunk),
     // no dejamos el botón bloqueado para siempre.
@@ -139,6 +144,17 @@ export default function PhotoFormPage() {
             {emailError && (
               <p className="mt-2 text-red-400 text-sm">{emailError}</p>
             )}
+          </div>
+
+          {/* LinkedIn URL Input (opcional) */}
+          <div className="w-full">
+            <input
+              type="url"
+              value={linkedIn}
+              onChange={(e) => setLinkedIn(e.target.value)}
+              placeholder="LinkedIn profile URL (optional)"
+              className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
+            />
           </div>
 
           {/* Take a Photo Button */}

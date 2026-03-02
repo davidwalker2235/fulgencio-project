@@ -3,6 +3,8 @@
 import { Suspense, useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ref, runTransaction } from "firebase/database";
+import { database } from "../../../firebaseConfig";
 import { API_BASE_URL } from "../../constants";
 
 function PhotoCaptureContent() {
@@ -10,6 +12,7 @@ function PhotoCaptureContent() {
   const searchParams = useSearchParams();
   const fullName = searchParams.get("name") || "";
   const email = searchParams.get("email") || "";
+  const linkedInParam = searchParams.get("linkedIn")?.trim() || "";
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -99,22 +102,29 @@ function PhotoCaptureContent() {
     try {
       // Import lazy para evitar que la ruta falle al cargar si Firebase no está disponible
       const { FirebaseService } = await import("../../services/firebaseService");
-      
-      // Obtener el siguiente número correlativo desde Firebase users
-      const usersData = await FirebaseService.read<Record<string, unknown>>("users");
-      const keys = usersData ? Object.keys(usersData) : [];
-      const numericKeys = keys.filter((k) => /^\d+$/.test(k)).map(Number);
-      const nextId = numericKeys.length === 0 ? 1 : Math.max(...numericKeys) + 1;
-      const userKey = String(nextId);
+
+      // Asignar número de orden único con transacción (evita duplicados con envíos simultáneos).
+      // nextOrderNumber = "próximo número a asignar". Asignamos ese valor a este usuario y guardamos valor+1.
+      const counterRef = ref(database, "counters/nextOrderNumber");
+      const { snapshot } = await runTransaction(counterRef, (current) => {
+        const valueToAssign = current ?? 0;
+        return valueToAssign + 1; // escribimos el siguiente para el próximo usuario
+      });
+      const written = snapshot.val() as number;
+      const userKey = String(written === 1 ? 1 : written - 1);
 
       // Guardar datos básicos en Firebase
-      await FirebaseService.write(`users/${userKey}`, {
+      const userData: Record<string, unknown> = {
         userId: userKey,
         fullName,
         email,
         photo: photo,
         timestamp: new Date().toISOString(),
-      });
+      };
+      if (linkedInParam) {
+        userData.linkedIn = linkedInParam;
+      }
+      await FirebaseService.write(`users/${userKey}`, userData);
 
       console.log(`Data saved to users/${userKey}`);
 
