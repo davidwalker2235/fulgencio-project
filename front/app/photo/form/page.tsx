@@ -122,7 +122,7 @@ export default function PhotoFormPage() {
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Your full name"
+              placeholder="Your Nickname"
               className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
               required
             />
