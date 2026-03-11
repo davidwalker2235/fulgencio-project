@@ -3,8 +3,6 @@
 import { Suspense, useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ref, runTransaction } from "firebase/database";
-import { database } from "../../../firebaseConfig";
 import { API_BASE_URL } from "../../constants";
 
 function PhotoCaptureContent() {
@@ -98,47 +96,33 @@ function PhotoCaptureContent() {
 
     setIsLoading(true);
     setLoadingMessage("Saving data...");
-    
+
     try {
-      // Import lazy para evitar que la ruta falle al cargar si Firebase no está disponible
-      const { FirebaseService } = await import("../../services/firebaseService");
-
-      // Asignar número de orden único con transacción (evita duplicados con envíos simultáneos).
-      // nextOrderNumber = "próximo número a asignar". Asignamos ese valor a este usuario y guardamos valor+1.
-      const counterRef = ref(database, "counters/nextOrderNumber");
-      const { snapshot } = await runTransaction(counterRef, (current) => {
-        const valueToAssign = current ?? 0;
-        return valueToAssign + 1; // escribimos el siguiente para el próximo usuario
+      const registerRes = await fetch(`${API_BASE_URL}/photo/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName,
+          email,
+          photo,
+          linkedIn: linkedInParam || undefined,
+        }),
       });
-      const written = snapshot.val() as number;
-      const userKey = String(written === 1 ? 1 : written - 1);
 
-      // Guardar datos básicos en Firebase
-      const userData: Record<string, unknown> = {
-        userId: userKey,
-        fullName,
-        email,
-        photo: photo,
-        timestamp: new Date().toISOString(),
-      };
-      if (linkedInParam) {
-        userData.linkedIn = linkedInParam;
+      if (!registerRes.ok) {
+        const errData = await registerRes.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${registerRes.status}`);
       }
-      await FirebaseService.write(`users/${userKey}`, userData);
 
-      console.log(`Data saved to users/${userKey}`);
+      const { orderNumber } = (await registerRes.json()) as { orderNumber: string };
+      console.log("User registered, orderNumber:", orderNumber);
 
-      // Generar caricatura llamando al backend
       setLoadingMessage("Generating caricature...");
-      console.log("Calling caricature generation endpoint...");
-      
       const response = await fetch(`${API_BASE_URL}/photo/generate-caricature`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderNumber: userKey,
+          orderNumber,
           photoBase64: photo,
         }),
       });
@@ -152,8 +136,7 @@ function PhotoCaptureContent() {
       const result = await response.json();
       console.log("Caricature generated successfully:", result);
 
-      // Navegar a la pantalla del código solo después de generar la caricatura
-      router.push(`/photo/code?code=${userKey}`);
+      router.push(`/photo/code?code=${orderNumber}`);
     } catch (error) {
       console.error("Error in handleSend:", error);
       setLoadingMessage("Error occurred");

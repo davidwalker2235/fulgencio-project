@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import contextlib
 import datetime
 import json
 import os
@@ -11,6 +12,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import firebase_admin
+import pyodbc
 import requests
 import websockets
 from dotenv import load_dotenv
@@ -64,6 +66,9 @@ VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
 # Configuración de Firebase
 FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
 FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+
+# Azure SQL (datos de users y caricatura)
+AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
 
 # Configuración de generación de imágenes (caricaturas)
 MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
@@ -214,28 +219,156 @@ def setup_firebase_status_listener() -> None:
         print(f"⚠️ Error configurando listener de status: {e}")
 
 
-def update_user_fields_in_realtime_db(order_number: str, fields: dict[str, Any]) -> bool:
-    """
-    Actualiza campos parciales en users/{order_number} usando REST PATCH.
-    """
-    if not FIREBASE_DATABASE_URL:
-        print("❌ FIREBASE_DATABASE_URL no configurado para actualizar Firebase.")
-        return False
+def _get_sql_server_driver_name() -> Optional[str]:
+    """Devuelve el nombre del primer controlador ODBC para SQL Server disponible (18, 17 o 13)."""
+    candidates = [
+        "ODBC Driver 18 for SQL Server",
+        "ODBC Driver 17 for SQL Server",
+        "ODBC Driver 13 for SQL Server",
+    ]
+    installed = pyodbc.drivers()
+    for name in candidates:
+        if name in installed:
+            return name
+    return None
 
+
+def _normalize_odbc_connection_string(raw: str) -> str:
+    """Normaliza atributos para ODBC Driver 17/18 y aliases comunes de ADO.NET."""
+    s = raw
+    s = s.replace("Encrypt=True", "Encrypt=yes").replace("Encrypt=False", "Encrypt=no")
+    s = s.replace("TrustServerCertificate=True", "TrustServerCertificate=yes").replace("TrustServerCertificate=False", "TrustServerCertificate=no")
+    # ADO.NET usa "Initial Catalog"; ODBC usa "Database"
+    if "Initial Catalog=" in s and "DATABASE=" not in s.upper():
+        s = s.replace("Initial Catalog=", "Database=")
+    # ADO.NET usa MultipleActiveResultSets; en ODBC se usa MARS_Connection
+    if "MultipleActiveResultSets=True" in s:
+        s = s.replace("MultipleActiveResultSets=True", "MARS_Connection=yes")
+    if "MultipleActiveResultSets=False" in s:
+        s = s.replace("MultipleActiveResultSets=False", "MARS_Connection=no")
+    # "Persist Security Info" no es relevante para pyodbc; eliminarlo evita warnings.
+    s = s.replace("Persist Security Info=False;", "")
+    s = s.replace("Persist Security Info=True;", "")
+    # Driver 17 puede no reconocer "User ID" / "Password"; usar UID / PWD
+    if "User ID=" in s and "UID=" not in s.upper():
+        s = s.replace("User ID=", "UID=")
+    if "Password=" in s and "PWD=" not in s.upper():
+        s = s.replace("Password=", "PWD=")
+    return s
+
+
+def _get_azure_sql_connection_string() -> str:
+    """Devuelve la connection string con Driver para pyodbc si no está presente.
+    En .env puede ir entre comillas dobles (p. ej. por password con !); se eliminan aquí.
+    """
+    raw = (AZURE_SQL_CONNECTION_STRING or "").strip()
+    if not raw:
+        return ""
+    if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
+        raw = raw[1:-1]
+    raw = _normalize_odbc_connection_string(raw)
+    if "Driver=" in raw or "DRIVER=" in raw:
+        return raw
+    driver = _get_sql_server_driver_name()
+    if not driver:
+        return "Driver={ODBC Driver 18 for SQL Server};" + raw
+    return f"Driver={{{driver}}};" + raw
+
+
+@contextlib.contextmanager
+def get_azure_sql_connection():
+    """Context manager para obtener una conexión a Azure SQL."""
+    conn_str = _get_azure_sql_connection_string()
+    if not conn_str:
+        raise RuntimeError("AZURE_SQL_CONNECTION_STRING no configurado")
+    conn = pyodbc.connect(conn_str)
     try:
-        url = f"{FIREBASE_DATABASE_URL.rstrip('/')}/users/{order_number}.json"
-        payload = json.dumps(fields).encode("utf-8")
-        request = urllib.request.Request(
-            url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="PATCH",
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            status = getattr(response, "status", 200)
-            return 200 <= status < 300
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def init_azure_sql_users_table() -> None:
+    """Crea la tabla users si no existe."""
+    if not _get_azure_sql_connection_string():
+        return
+    try:
+        with get_azure_sql_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'users')
+                CREATE TABLE users (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    full_name NVARCHAR(500) NOT NULL,
+                    email NVARCHAR(500) NOT NULL,
+                    photo NVARCHAR(MAX) NOT NULL,
+                    [timestamp] NVARCHAR(100) NOT NULL,
+                    linked_in NVARCHAR(2000) NULL,
+                    caricature NVARCHAR(MAX) NULL,
+                    caricature_timestamp NVARCHAR(100) NULL
+                );
+            """)
+            print("✅ Tabla users de Azure SQL verificada/creada")
     except Exception as err:
-        print(f"❌ Error actualizando Firebase REST para {order_number}: {err}")
+        print(f"⚠️ Error inicializando tabla users en Azure SQL: {err}")
+
+
+def insert_user_azure_sql(full_name: str, email: str, photo: str, linked_in: Optional[str] = None) -> int:
+    """
+    Inserta un usuario en Azure SQL y devuelve el id (order number).
+    """
+    with get_azure_sql_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO users (full_name, email, photo, [timestamp], linked_in)
+                OUTPUT INSERTED.id
+                VALUES (?, ?, ?, ?, ?);
+                """,
+                (
+                    full_name.strip(),
+                    email.strip(),
+                    photo,
+                    datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    linked_in.strip() if linked_in and linked_in.strip() else None,
+                ),
+            )
+            row = cursor.fetchone()
+        except pyodbc.Error as e:
+            print(f"❌ pyodbc.Error: {e}; args={getattr(e, 'args', None)}")
+            raise
+        if row is None or row[0] is None:
+            raise RuntimeError("No se obtuvo id tras INSERT en users")
+        return int(float(row[0]))
+
+
+def update_user_caricature_azure_sql(order_number: str, caricature_base64: str) -> bool:
+    """
+    Actualiza la caricatura (una sola imagen base64) del usuario en Azure SQL.
+    """
+    try:
+        with get_azure_sql_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE users
+                SET caricature = ?, caricature_timestamp = ?
+                WHERE id = ?;
+                """,
+                (
+                    caricature_base64,
+                    datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    order_number,
+                ),
+            )
+            return cursor.rowcount > 0
+    except Exception as err:
+        print(f"❌ Error actualizando caricature en Azure SQL para {order_number}: {err}")
         return False
 
 
@@ -353,6 +486,13 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     raise RuntimeError(
         f"200 sin b64_json (api-version={version}). Body: {response.text}"
     )
+
+
+class RegisterUserRequest(BaseModel):
+    fullName: str
+    email: str
+    photo: str
+    linkedIn: Optional[str] = None
 
 
 class CaricatureGenerationRequest(BaseModel):
@@ -496,11 +636,12 @@ async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) ->
 
 @app.on_event("startup")
 async def on_startup():
-    """Inicializa Firebase y listener de status al arrancar."""
+    """Inicializa Firebase, listener de status y tabla Azure SQL al arrancar."""
     global main_event_loop
     main_event_loop = asyncio.get_running_loop()
     initialize_firebase_admin()
     setup_firebase_status_listener()
+    init_azure_sql_users_table()
 
 
 @app.get("/")
@@ -548,11 +689,44 @@ async def summarize_transcriptions(payload: TranscriptionSummaryRequest):
         raise HTTPException(status_code=500, detail=str(err))
 
 
+@app.post("/photo/register")
+async def register_user(payload: RegisterUserRequest):
+    """
+    Registra un usuario en Azure SQL y devuelve el número de orden (id).
+    """
+    if not _get_azure_sql_connection_string():
+        raise HTTPException(
+            status_code=503,
+            detail="AZURE_SQL_CONNECTION_STRING no configurado",
+        )
+    full_name = (payload.fullName or "").strip()
+    email = (payload.email or "").strip()
+    photo = (payload.photo or "").strip()
+    if not full_name or not email or not photo:
+        raise HTTPException(
+            status_code=400,
+            detail="fullName, email y photo son obligatorios",
+        )
+    linked_in = (payload.linkedIn or "").strip() or None
+    try:
+        order_number = await asyncio.to_thread(
+            insert_user_azure_sql,
+            full_name,
+            email,
+            photo,
+            linked_in,
+        )
+        return {"orderNumber": str(order_number)}
+    except Exception as err:
+        print(f"❌ Error registrando usuario en Azure SQL: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+
+
 @app.post("/photo/generate-caricature")
 async def generate_caricature(payload: CaricatureGenerationRequest):
     """
-    Genera caricaturas desde foto usando gpt-image-1.5 y las guarda en
-    users/{order}/caricatures (array).
+    Genera una caricatura desde la foto con gpt-image-1.5 y la guarda en Azure SQL
+    (un solo valor base64, no array).
     """
     order_number = payload.orderNumber.strip()
     print("========================================")
@@ -566,37 +740,32 @@ async def generate_caricature(payload: CaricatureGenerationRequest):
         raise HTTPException(status_code=400, detail="photoBase64 es obligatorio")
 
     try:
-        print("1) Generando caricatura en Azure Foundry...")
+        print("1) Generando caricatura en Azure...")
         caricatures_base64 = await asyncio.to_thread(
             call_image_generation_sync,
             payload.photoBase64,
         )
-        print(f"2) Caricaturas generadas. Total: {len(caricatures_base64)}")
-        for i, b64_img in enumerate(caricatures_base64, start=1):
-            print(f"   - Caricatura #{i}: longitud base64={len(b64_img)}")
+        if not caricatures_base64:
+            raise RuntimeError("No se generó ninguna imagen")
+        # Una sola caricatura: tomar la primera
+        single_caricature_base64 = caricatures_base64[0]
+        print(f"2) Caricatura generada. longitud base64={len(single_caricature_base64)}")
 
-        caricatures_data_urls = [
-            f"data:image/png;base64,{img_b64}" for img_b64 in caricatures_base64
-        ]
-
-        print("3) Guardando caricaturas en Firebase...")
+        print("3) Guardando caricatura en Azure SQL...")
         updated_ok = await asyncio.to_thread(
-            update_user_fields_in_realtime_db,
+            update_user_caricature_azure_sql,
             order_number,
-            {
-                "caricatures": caricatures_data_urls,
-                "caricaturesTimestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            },
+            single_caricature_base64,
         )
         if not updated_ok:
-            raise RuntimeError("No se pudo guardar caricatures en Firebase")
+            raise RuntimeError("No se pudo guardar la caricatura en Azure SQL")
 
-        print(f"✅ Caricaturas guardadas en users/{order_number}/caricatures")
+        print(f"✅ Caricatura guardada en users id={order_number}")
         return {
             "ok": True,
             "orderNumber": order_number,
-            "storedInFirebase": True,
-            "generatedCount": len(caricatures_data_urls),
+            "storedInSql": True,
+            "generatedCount": 1,
         }
     except HTTPException:
         raise

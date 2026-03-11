@@ -178,6 +178,11 @@ resource "azurerm_container_app" "backend" {
         name        = "FIREBASE_SERVICE_ACCOUNT_JSON"
         secret_name = "firebase-service-account-json"
       }
+
+      env {
+        name        = "AZURE_SQL_CONNECTION_STRING"
+        secret_name = "azure-sql-connection-string"
+      }
     }
   }
 
@@ -210,6 +215,11 @@ resource "azurerm_container_app" "backend" {
   secret {
     name  = "firebase-service-account-json"
     value = var.firebase_service_account_json
+  }
+
+  secret {
+    name  = "azure-sql-connection-string"
+    value = var.azure_sql_connection_string
   }
 
   tags = var.tags

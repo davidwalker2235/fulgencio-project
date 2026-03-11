@@ -157,7 +157,7 @@ variable "azure_openai_image_edits_endpoint" {
   default     = ""
 }
 
-# Firebase (backend: guardar caricaturas en Realtime Database)
+# Firebase (backend: status, robot_action, etc.)
 variable "firebase_database_url" {
   description = "URL de Firebase Realtime Database para el backend"
   type        = string
@@ -166,6 +166,14 @@ variable "firebase_database_url" {
 
 variable "firebase_service_account_json" {
   description = "JSON del service account de Firebase Admin SDK para backend"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# Azure SQL (backend: users y caricatura)
+variable "azure_sql_connection_string" {
+  description = "Connection string para Azure SQL Database (users)"
   type        = string
   sensitive   = true
   default     = ""
