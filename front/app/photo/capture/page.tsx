@@ -18,6 +18,7 @@ function PhotoCaptureContent() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>("Sending...");
+  const [submitError, setSubmitError] = useState<string>("");
   const [cameraError, setCameraError] = useState<string>("");
   const [isCameraStarting, setIsCameraStarting] = useState(false);
 
@@ -88,12 +89,14 @@ function PhotoCaptureContent() {
 
   const handleRepeat = () => {
     setPhoto(null);
+    setSubmitError("");
     startCamera();
   };
 
   const handleSend = async () => {
     if (!photo || !email) return;
 
+    setSubmitError("");
     setIsLoading(true);
     setLoadingMessage("Saving data...");
 
@@ -111,10 +114,15 @@ function PhotoCaptureContent() {
 
       if (!registerRes.ok) {
         const errData = await registerRes.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP ${registerRes.status}`);
+        throw new Error(
+          `Error registrando usuario: ${errData.detail || `HTTP ${registerRes.status}`}`
+        );
       }
 
       const { orderNumber } = (await registerRes.json()) as { orderNumber: string };
+      if (!orderNumber) {
+        throw new Error("El backend no devolvió orderNumber");
+      }
       console.log("User registered, orderNumber:", orderNumber);
 
       setLoadingMessage("Generating caricature...");
@@ -130,7 +138,9 @@ function PhotoCaptureContent() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("Error generating caricature:", errorData);
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        throw new Error(
+          `Error generando caricatura: ${errorData.detail || `HTTP ${response.status}`}`
+        );
       }
 
       const result = await response.json();
@@ -139,7 +149,12 @@ function PhotoCaptureContent() {
       router.push(`/photo/code?code=${orderNumber}`);
     } catch (error) {
       console.error("Error in handleSend:", error);
-      setLoadingMessage("Error occurred");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error inesperado enviando la foto";
+      setSubmitError(message);
+      setLoadingMessage("Error");
       setTimeout(() => {
         setIsLoading(false);
         setLoadingMessage("Sending...");
@@ -158,6 +173,20 @@ function PhotoCaptureContent() {
           <p className="text-white text-base font-medium">
             Processing photo, please wait...
           </p>
+        </div>
+      )}
+      {submitError && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl p-5">
+            <h2 className="text-lg font-semibold text-gray-900">Error</h2>
+            <p className="mt-3 text-sm text-gray-700 break-words">{submitError}</p>
+            <button
+              onClick={() => setSubmitError("")}
+              className="mt-5 w-full py-2 px-4 rounded-lg font-semibold text-sm bg-[#033778] text-white hover:bg-[#022b5f] transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
 
@@ -232,21 +261,23 @@ function PhotoCaptureContent() {
               </button>
             </div>
           ) : (
-            <div className="w-full max-w-xs flex gap-4">
-              <button
-                onClick={handleSend}
-                disabled={isLoading}
-                className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-green-500 text-white hover:bg-green-600 active:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? loadingMessage : "Send"}
-              </button>
-              <button
-                onClick={handleRepeat}
-                disabled={isLoading}
-                className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-red-500 text-white hover:bg-red-600 active:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Repeat
-              </button>
+            <div className="w-full max-w-xs flex flex-col gap-3">
+              <div className="w-full flex gap-4">
+                <button
+                  onClick={handleSend}
+                  disabled={isLoading}
+                  className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-green-500 text-white hover:bg-green-600 active:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? loadingMessage : "Send"}
+                </button>
+                <button
+                  onClick={handleRepeat}
+                  disabled={isLoading}
+                  className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-red-500 text-white hover:bg-red-600 active:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Repeat
+                </button>
+              </div>
             </div>
           )}
         </div>
