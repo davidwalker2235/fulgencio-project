@@ -305,19 +305,27 @@ def init_azure_sql_users_table() -> None:
                     id INT IDENTITY(1,1) PRIMARY KEY,
                     full_name NVARCHAR(500) NOT NULL,
                     email NVARCHAR(500) NOT NULL,
-                    photo NVARCHAR(MAX) NOT NULL,
                     [timestamp] NVARCHAR(100) NOT NULL,
                     linked_in NVARCHAR(2000) NULL,
                     caricature NVARCHAR(MAX) NULL,
                     caricature_timestamp NVARCHAR(100) NULL
                 );
             """)
+            cursor.execute("""
+                IF EXISTS (
+                    SELECT 1
+                    FROM sys.columns
+                    WHERE object_id = OBJECT_ID('users')
+                      AND name = 'photo'
+                )
+                ALTER TABLE users DROP COLUMN photo;
+            """)
             print("✅ Tabla users de Azure SQL verificada/creada")
     except Exception as err:
         print(f"⚠️ Error inicializando tabla users en Azure SQL: {err}")
 
 
-def insert_user_azure_sql(full_name: str, email: str, photo: str, linked_in: Optional[str] = None) -> int:
+def insert_user_azure_sql(full_name: str, email: str, linked_in: Optional[str] = None) -> int:
     """
     Inserta un usuario en Azure SQL y devuelve el id (order number).
     """
@@ -326,14 +334,13 @@ def insert_user_azure_sql(full_name: str, email: str, photo: str, linked_in: Opt
         try:
             cursor.execute(
                 """
-                INSERT INTO users (full_name, email, photo, [timestamp], linked_in)
+                INSERT INTO users (full_name, email, [timestamp], linked_in)
                 OUTPUT INSERTED.id
-                VALUES (?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?);
                 """,
                 (
                     full_name.strip(),
                     email.strip(),
-                    photo,
                     datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     linked_in.strip() if linked_in and linked_in.strip() else None,
                 ),
@@ -491,7 +498,6 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
 class RegisterUserRequest(BaseModel):
     fullName: str
     email: str
-    photo: str
     linkedIn: Optional[str] = None
 
 
@@ -701,11 +707,10 @@ async def register_user(payload: RegisterUserRequest):
         )
     full_name = (payload.fullName or "").strip()
     email = (payload.email or "").strip()
-    photo = (payload.photo or "").strip()
-    if not full_name or not email or not photo:
+    if not full_name or not email:
         raise HTTPException(
             status_code=400,
-            detail="fullName, email y photo son obligatorios",
+            detail="fullName y email son obligatorios",
         )
     linked_in = (payload.linkedIn or "").strip() or None
     try:
@@ -713,7 +718,6 @@ async def register_user(payload: RegisterUserRequest):
             insert_user_azure_sql,
             full_name,
             email,
-            photo,
             linked_in,
         )
         return {"orderNumber": str(order_number)}
