@@ -106,9 +106,12 @@ function PhotoCaptureContent() {
     setLoadingMessage("Saving data...");
 
     try {
+      const requestId =
+        globalThis.crypto?.randomUUID?.() ??
+        `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       let registerErrorMessage = "";
       let orderNumber = "";
-      for (let attempt = 1; attempt <= 2; attempt += 1) {
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
         const registerRes = await fetch(`${API_BASE_URL}/photo/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -116,6 +119,7 @@ function PhotoCaptureContent() {
             fullName,
             email,
             linkedIn: linkedInParam || undefined,
+            requestId,
           }),
         });
 
@@ -130,10 +134,17 @@ function PhotoCaptureContent() {
         const isTransientDbError =
           registerErrorMessage.includes("HYT00") ||
           registerErrorMessage.includes("08001") ||
+          registerErrorMessage.includes("08S01") ||
+          registerErrorMessage.includes("40613") ||
+          registerErrorMessage.includes("40197") ||
+          registerErrorMessage.includes("40501") ||
+          registerErrorMessage.toLowerCase().includes("temporalmente no disponible") ||
+          registerErrorMessage.toLowerCase().includes("not currently available") ||
           registerErrorMessage.toLowerCase().includes("timeout");
-        if (isTransientDbError && attempt < 2) {
+        if (isTransientDbError && attempt < 5) {
           setLoadingMessage("Connecting to database, retrying...");
-          await new Promise((resolve) => setTimeout(resolve, 1200));
+          const delayMs = 800 * 2 ** (attempt - 1);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
           setLoadingMessage("Saving data...");
           continue;
         }
@@ -171,9 +182,11 @@ function PhotoCaptureContent() {
       console.error("Error in handleSend:", error);
       const baseMessage =
         error instanceof Error ? error.message : "Error inesperado enviando la foto";
-      const message = baseMessage.toLowerCase().includes("timeout")
-        ? "La base de datos tardó demasiado en responder. Inténtalo de nuevo en unos segundos."
-        : baseMessage;
+      const lower = baseMessage.toLowerCase();
+      const message =
+        lower.includes("timeout") || lower.includes("not currently available") || lower.includes("temporalmente no disponible")
+          ? "La base de datos está arrancando o tardó en responder. Ya lo intentamos varias veces automáticamente; espera unos segundos e inténtalo de nuevo."
+          : baseMessage;
       setSubmitError(message);
       setLoadingMessage("Error");
       setTimeout(() => {

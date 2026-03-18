@@ -4,6 +4,7 @@ import contextlib
 import datetime
 import json
 import os
+import random
 import sys
 import threading
 import time
@@ -71,8 +72,9 @@ FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
 # Azure SQL (datos de users y caricatura)
 AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
 AZURE_SQL_CONNECT_TIMEOUT_SECONDS = int(os.getenv("AZURE_SQL_CONNECT_TIMEOUT_SECONDS", "60"))
-AZURE_SQL_CONNECT_RETRY_ATTEMPTS = int(os.getenv("AZURE_SQL_CONNECT_RETRY_ATTEMPTS", "3"))
+AZURE_SQL_CONNECT_RETRY_ATTEMPTS = int(os.getenv("AZURE_SQL_CONNECT_RETRY_ATTEMPTS", "5"))
 AZURE_SQL_CONNECT_RETRY_BASE_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_RETRY_BASE_SECONDS", "1.0"))
+AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS", "45"))
 
 # Configuración de generación de imágenes (caricaturas)
 MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
@@ -286,9 +288,20 @@ def _is_transient_sql_connect_error(err: Exception) -> bool:
         "hyt00",  # login timeout expired
         "08001",  # unable to connect / transport errors
         "08s01",  # communication link failure
+        "40613",  # Database is not currently available
+        "40197",  # Service has encountered an error processing request
+        "40501",  # Service busy
+        "49918",  # Cannot process request
+        "49919",
+        "49920",
+        "10928",  # Resource limit
+        "10929",
+        "not currently available",
+        "service is currently busy",
         "timed out",
         "timeout",
         "tcp provider",
+        "connection is busy",
     )
     return any(marker in msg for marker in transient_markers)
 
@@ -296,13 +309,20 @@ def _is_transient_sql_connect_error(err: Exception) -> bool:
 def _open_azure_sql_connection_with_retry(conn_str: str):
     """Abre conexión SQL con retries y backoff para fallos transitorios."""
     attempts = max(1, AZURE_SQL_CONNECT_RETRY_ATTEMPTS)
+    started_at = time.monotonic()
     for attempt in range(1, attempts + 1):
         try:
             return pyodbc.connect(conn_str, timeout=AZURE_SQL_CONNECT_TIMEOUT_SECONDS)
         except pyodbc.Error as err:
-            if attempt >= attempts or not _is_transient_sql_connect_error(err):
+            elapsed = time.monotonic() - started_at
+            is_transient = _is_transient_sql_connect_error(err)
+            if attempt >= attempts or not is_transient or elapsed >= AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS:
                 raise
             sleep_seconds = AZURE_SQL_CONNECT_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+            # Jitter para evitar colisiones de reintentos simultáneos.
+            sleep_seconds += random.uniform(0, AZURE_SQL_CONNECT_RETRY_BASE_SECONDS)
+            if elapsed + sleep_seconds > AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS:
+                sleep_seconds = max(0.1, AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS - elapsed)
             print(
                 f"⚠️ Conexión Azure SQL falló (intento {attempt}/{attempts}): {err}. "
                 f"Reintentando en {sleep_seconds:.1f}s..."
@@ -342,9 +362,14 @@ def init_azure_sql_users_table() -> None:
                     email NVARCHAR(500) NOT NULL,
                     [timestamp] NVARCHAR(100) NOT NULL,
                     linked_in NVARCHAR(2000) NULL,
+                    request_id NVARCHAR(64) NULL,
                     caricature NVARCHAR(MAX) NULL,
                     caricature_timestamp NVARCHAR(100) NULL
                 );
+            """)
+            cursor.execute("""
+                IF COL_LENGTH('users', 'request_id') IS NULL
+                ALTER TABLE users ADD request_id NVARCHAR(64) NULL;
             """)
             cursor.execute("""
                 IF EXISTS (
@@ -354,6 +379,17 @@ def init_azure_sql_users_table() -> None:
                       AND name = 'photo'
                 )
                 ALTER TABLE users DROP COLUMN photo;
+            """)
+            cursor.execute("""
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = 'UX_users_request_id'
+                      AND object_id = OBJECT_ID('users')
+                )
+                CREATE UNIQUE INDEX UX_users_request_id
+                    ON users (request_id)
+                    WHERE request_id IS NOT NULL;
             """)
             print("✅ Tabla users de Azure SQL verificada/creada")
     except Exception as err:
@@ -377,24 +413,38 @@ def warm_up_azure_sql_connection() -> None:
         print(f"⚠️ Warm-up Azure SQL falló: {err}")
 
 
-def insert_user_azure_sql(full_name: str, email: str, linked_in: Optional[str] = None) -> int:
+def insert_user_azure_sql(
+    full_name: str,
+    email: str,
+    linked_in: Optional[str] = None,
+    request_id: Optional[str] = None,
+) -> int:
     """
     Inserta un usuario en Azure SQL y devuelve el id (order number).
     """
     with get_azure_sql_connection() as conn:
         cursor = conn.cursor()
         try:
+            if request_id:
+                cursor.execute(
+                    "SELECT id FROM users WHERE request_id = ?;",
+                    (request_id,),
+                )
+                existing = cursor.fetchone()
+                if existing and existing[0] is not None:
+                    return int(existing[0])
             cursor.execute(
                 """
-                INSERT INTO users (full_name, email, [timestamp], linked_in)
+                INSERT INTO users (full_name, email, [timestamp], linked_in, request_id)
                 OUTPUT INSERTED.id
-                VALUES (?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?);
                 """,
                 (
                     full_name.strip(),
                     email.strip(),
                     datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     linked_in.strip() if linked_in and linked_in.strip() else None,
+                    request_id.strip() if request_id and request_id.strip() else None,
                 ),
             )
             row = cursor.fetchone()
@@ -551,6 +601,7 @@ class RegisterUserRequest(BaseModel):
     fullName: str
     email: str
     linkedIn: Optional[str] = None
+    requestId: Optional[str] = None
 
 
 class CaricatureGenerationRequest(BaseModel):
@@ -766,14 +817,24 @@ async def register_user(payload: RegisterUserRequest):
             detail="fullName y email son obligatorios",
         )
     linked_in = (payload.linkedIn or "").strip() or None
+    request_id = (payload.requestId or "").strip() or None
     try:
         order_number = await asyncio.to_thread(
             insert_user_azure_sql,
             full_name,
             email,
             linked_in,
+            request_id,
         )
         return {"orderNumber": str(order_number)}
+    except pyodbc.Error as err:
+        print(f"❌ Error registrando usuario en Azure SQL: {err}")
+        if _is_transient_sql_connect_error(err):
+            raise HTTPException(
+                status_code=503,
+                detail="Azure SQL temporalmente no disponible. Reintentando puede resolverlo.",
+            )
+        raise HTTPException(status_code=500, detail=str(err))
     except Exception as err:
         print(f"❌ Error registrando usuario en Azure SQL: {err}")
         raise HTTPException(status_code=500, detail=str(err))

@@ -198,6 +198,11 @@ resource "azurerm_container_app" "backend" {
         name  = "AZURE_SQL_CONNECT_RETRY_BASE_SECONDS"
         value = var.azure_sql_connect_retry_base_seconds
       }
+
+      env {
+        name  = "AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS"
+        value = var.azure_sql_connect_max_total_seconds
+      }
     }
   }
 

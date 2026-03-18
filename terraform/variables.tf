@@ -188,13 +188,19 @@ variable "azure_sql_connect_timeout_seconds" {
 variable "azure_sql_connect_retry_attempts" {
   description = "Número de reintentos de conexión Azure SQL en errores transitorios"
   type        = number
-  default     = 3
+  default     = 5
 }
 
 variable "azure_sql_connect_retry_base_seconds" {
   description = "Base de backoff (segundos) para reintentos de conexión Azure SQL"
   type        = string
   default     = "1.0"
+}
+
+variable "azure_sql_connect_max_total_seconds" {
+  description = "Tiempo total máximo (segundos) destinado a reintentos de conexión Azure SQL"
+  type        = string
+  default     = "45"
 }
 
 # Tags de imagen para forzar nueva revisión en cada deploy (evita reinicio manual)
