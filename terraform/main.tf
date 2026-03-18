@@ -183,6 +183,21 @@ resource "azurerm_container_app" "backend" {
         name        = "AZURE_SQL_CONNECTION_STRING"
         secret_name = "azure-sql-connection-string"
       }
+
+      env {
+        name  = "AZURE_SQL_CONNECT_TIMEOUT_SECONDS"
+        value = tostring(var.azure_sql_connect_timeout_seconds)
+      }
+
+      env {
+        name  = "AZURE_SQL_CONNECT_RETRY_ATTEMPTS"
+        value = tostring(var.azure_sql_connect_retry_attempts)
+      }
+
+      env {
+        name  = "AZURE_SQL_CONNECT_RETRY_BASE_SECONDS"
+        value = var.azure_sql_connect_retry_base_seconds
+      }
     }
   }
 

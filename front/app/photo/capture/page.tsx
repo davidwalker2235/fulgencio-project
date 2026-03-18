@@ -106,24 +106,40 @@ function PhotoCaptureContent() {
     setLoadingMessage("Saving data...");
 
     try {
-      const registerRes = await fetch(`${API_BASE_URL}/photo/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName,
-          email,
-          linkedIn: linkedInParam || undefined,
-        }),
-      });
+      let registerErrorMessage = "";
+      let orderNumber = "";
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const registerRes = await fetch(`${API_BASE_URL}/photo/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName,
+            email,
+            linkedIn: linkedInParam || undefined,
+          }),
+        });
 
-      if (!registerRes.ok) {
+        if (registerRes.ok) {
+          const data = (await registerRes.json()) as { orderNumber?: string };
+          orderNumber = data.orderNumber || "";
+          break;
+        }
+
         const errData = await registerRes.json().catch(() => ({}));
-        throw new Error(
-          `Error registrando usuario: ${errData.detail || `HTTP ${registerRes.status}`}`
-        );
+        registerErrorMessage = String(errData.detail || `HTTP ${registerRes.status}`);
+        const isTransientDbError =
+          registerErrorMessage.includes("HYT00") ||
+          registerErrorMessage.includes("08001") ||
+          registerErrorMessage.toLowerCase().includes("timeout");
+        if (isTransientDbError && attempt < 2) {
+          setLoadingMessage("Connecting to database, retrying...");
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          setLoadingMessage("Saving data...");
+          continue;
+        }
+        throw new Error(`Error registrando usuario: ${registerErrorMessage}`);
       }
 
-      const { orderNumber } = (await registerRes.json()) as { orderNumber: string };
       if (!orderNumber) {
         throw new Error("El backend no devolvió orderNumber");
       }
@@ -153,10 +169,11 @@ function PhotoCaptureContent() {
       router.push(`/photo/code?code=${orderNumber}`);
     } catch (error) {
       console.error("Error in handleSend:", error);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error inesperado enviando la foto";
+      const baseMessage =
+        error instanceof Error ? error.message : "Error inesperado enviando la foto";
+      const message = baseMessage.toLowerCase().includes("timeout")
+        ? "La base de datos tardó demasiado en responder. Inténtalo de nuevo en unos segundos."
+        : baseMessage;
       setSubmitError(message);
       setLoadingMessage("Error");
       setTimeout(() => {

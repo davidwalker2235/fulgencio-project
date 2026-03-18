@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from enum import Enum
@@ -69,6 +70,9 @@ FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
 
 # Azure SQL (datos de users y caricatura)
 AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
+AZURE_SQL_CONNECT_TIMEOUT_SECONDS = int(os.getenv("AZURE_SQL_CONNECT_TIMEOUT_SECONDS", "60"))
+AZURE_SQL_CONNECT_RETRY_ATTEMPTS = int(os.getenv("AZURE_SQL_CONNECT_RETRY_ATTEMPTS", "3"))
+AZURE_SQL_CONNECT_RETRY_BASE_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_RETRY_BASE_SECONDS", "1.0"))
 
 # Configuración de generación de imágenes (caricaturas)
 MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
@@ -275,13 +279,44 @@ def _get_azure_sql_connection_string() -> str:
     return f"Driver={{{driver}}};" + raw
 
 
+def _is_transient_sql_connect_error(err: Exception) -> bool:
+    """Detecta errores transitorios de conexión/login timeout en Azure SQL."""
+    msg = str(err).lower()
+    transient_markers = (
+        "hyt00",  # login timeout expired
+        "08001",  # unable to connect / transport errors
+        "08s01",  # communication link failure
+        "timed out",
+        "timeout",
+        "tcp provider",
+    )
+    return any(marker in msg for marker in transient_markers)
+
+
+def _open_azure_sql_connection_with_retry(conn_str: str):
+    """Abre conexión SQL con retries y backoff para fallos transitorios."""
+    attempts = max(1, AZURE_SQL_CONNECT_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            return pyodbc.connect(conn_str, timeout=AZURE_SQL_CONNECT_TIMEOUT_SECONDS)
+        except pyodbc.Error as err:
+            if attempt >= attempts or not _is_transient_sql_connect_error(err):
+                raise
+            sleep_seconds = AZURE_SQL_CONNECT_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+            print(
+                f"⚠️ Conexión Azure SQL falló (intento {attempt}/{attempts}): {err}. "
+                f"Reintentando en {sleep_seconds:.1f}s..."
+            )
+            time.sleep(sleep_seconds)
+
+
 @contextlib.contextmanager
 def get_azure_sql_connection():
     """Context manager para obtener una conexión a Azure SQL."""
     conn_str = _get_azure_sql_connection_string()
     if not conn_str:
         raise RuntimeError("AZURE_SQL_CONNECTION_STRING no configurado")
-    conn = pyodbc.connect(conn_str)
+    conn = _open_azure_sql_connection_with_retry(conn_str)
     try:
         yield conn
         conn.commit()
@@ -323,6 +358,23 @@ def init_azure_sql_users_table() -> None:
             print("✅ Tabla users de Azure SQL verificada/creada")
     except Exception as err:
         print(f"⚠️ Error inicializando tabla users en Azure SQL: {err}")
+
+
+def warm_up_azure_sql_connection() -> None:
+    """
+    Warm-up de conexión para reducir fallos en el primer request.
+    """
+    if not _get_azure_sql_connection_string():
+        return
+    try:
+        with get_azure_sql_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1;")
+            cursor.fetchone()
+        print("✅ Warm-up Azure SQL completado")
+    except Exception as err:
+        # No bloquea el arranque; los endpoints volverán a reintentar al conectar.
+        print(f"⚠️ Warm-up Azure SQL falló: {err}")
 
 
 def insert_user_azure_sql(full_name: str, email: str, linked_in: Optional[str] = None) -> int:
@@ -647,6 +699,7 @@ async def on_startup():
     main_event_loop = asyncio.get_running_loop()
     initialize_firebase_admin()
     setup_firebase_status_listener()
+    warm_up_azure_sql_connection()
     init_azure_sql_users_table()
 
 

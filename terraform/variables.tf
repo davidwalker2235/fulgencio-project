@@ -179,6 +179,24 @@ variable "azure_sql_connection_string" {
   default     = ""
 }
 
+variable "azure_sql_connect_timeout_seconds" {
+  description = "Timeout (segundos) para conectar a Azure SQL desde backend"
+  type        = number
+  default     = 60
+}
+
+variable "azure_sql_connect_retry_attempts" {
+  description = "Número de reintentos de conexión Azure SQL en errores transitorios"
+  type        = number
+  default     = 3
+}
+
+variable "azure_sql_connect_retry_base_seconds" {
+  description = "Base de backoff (segundos) para reintentos de conexión Azure SQL"
+  type        = string
+  default     = "1.0"
+}
+
 # Tags de imagen para forzar nueva revisión en cada deploy (evita reinicio manual)
 variable "backend_image_tag" {
   description = "Tag de la imagen backend (usar github.sha en CI para que Container Apps detecte cambios)"
