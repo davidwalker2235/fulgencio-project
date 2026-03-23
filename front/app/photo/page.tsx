@@ -63,6 +63,7 @@ export default function PhotoPage() {
               onChange={(e) => setAgreed(e.target.checked)}
               className="w-6 h-6 sm:w-5 sm:h-5 rounded-md border-2 border-white bg-white/10 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778] cursor-pointer shadow-[0_0_0_1px_rgba(0,0,0,0.2)]"
               style={{ accentColor: "#22c55e" }}
+              suppressHydrationWarning
             />
             <span className="text-white text-xs sm:text-sm">
               Agree the <a href="https://www.betterask.erni/es-es/privacy-statement/" target="_blank" rel="noopener noreferrer" className="underline text-white hover:text-gray-200 transition-colors">terms and conditions</a>

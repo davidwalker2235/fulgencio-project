@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent, ChangeEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 export default function PhotoFormPage() {
   const router = useRouter();
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [linkedIn, setLinkedIn] = useState("");
@@ -42,17 +43,7 @@ export default function PhotoFormPage() {
 
   const isFormValid = fullName.trim() !== "" && email.trim() !== "" && validateEmail(email);
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    
-    if (!validateEmail(email)) {
-      setEmailError("Invalid email address");
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    // Navegar a la pantalla de captura con los datos del formulario
+  const buildCaptureParams = () => {
     const params = new URLSearchParams({
       name: fullName.trim(),
       email: email.trim(),
@@ -61,6 +52,13 @@ export default function PhotoFormPage() {
     if (linkedInTrimmed) {
       params.set("linkedIn", linkedInTrimmed);
     }
+    return params;
+  };
+
+  const navigateToCapture = (source: "camera" | "gallery") => {
+    const params = buildCaptureParams();
+    params.set("source", source);
+    const targetUrl = `/photo/capture?${params.toString()}`;
 
     // Si por cualquier motivo la navegación SPA falla (p.ej. error cargando el chunk),
     // no dejamos el botón bloqueado para siempre.
@@ -69,13 +67,64 @@ export default function PhotoFormPage() {
     }, 1500);
 
     try {
-      router.push(`/photo/capture?${params.toString()}`);
+      router.push(targetUrl);
     } catch (err) {
       console.error("Error navegando a /photo/capture:", err);
-      window.location.assign(`/photo/capture?${params.toString()}`);
+      window.location.assign(targetUrl);
     } finally {
       window.clearTimeout(unlockTimer);
     }
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!validateEmail(email)) {
+      setEmailError("Invalid email address");
+      return;
+    }
+
+    setIsSubmitting(true);
+    navigateToCapture("camera");
+  };
+
+  const handleGalleryButton = () => {
+    if (!isFormValid || isSubmitting) {
+      return;
+    }
+    galleryInputRef.current?.click();
+  };
+
+  const handleGalleryFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const dataUrl = String(reader.result || "");
+        if (!dataUrl) {
+          throw new Error("No se pudo leer la imagen seleccionada");
+        }
+        sessionStorage.setItem("photo:selectedImageDataUrl", dataUrl);
+        navigateToCapture("gallery");
+      } catch (error) {
+        console.error("Error preparando imagen de galería:", error);
+        setIsSubmitting(false);
+      } finally {
+        // Permite seleccionar la misma imagen de nuevo si hace falta.
+        e.target.value = "";
+      }
+    };
+    reader.onerror = () => {
+      console.error("Error leyendo archivo de galería");
+      setIsSubmitting(false);
+      e.target.value = "";
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -157,18 +206,40 @@ export default function PhotoFormPage() {
             />
           </div>
 
-          {/* Take a Photo Button */}
-          <button
-            type="submit"
-            disabled={!isFormValid || isSubmitting}
-            className={`w-full py-3 px-6 rounded-lg font-semibold text-base transition-all ${
-              isFormValid && !isSubmitting
-                ? "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
-                : "bg-gray-400 text-gray-600 cursor-not-allowed"
-            }`}
-          >
-            {isSubmitting ? "Processing..." : "Take a photo"}
-          </button>
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleGalleryFileChange}
+          />
+
+          {/* Action Buttons */}
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="submit"
+              disabled={!isFormValid || isSubmitting}
+              className={`w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
+                isFormValid && !isSubmitting
+                  ? "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
+                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
+              }`}
+            >
+              {isSubmitting ? "Processing..." : "Take a photo"}
+            </button>
+            <button
+              type="button"
+              onClick={handleGalleryButton}
+              disabled={!isFormValid || isSubmitting}
+              className={`w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
+                isFormValid && !isSubmitting
+                  ? "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
+                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
+              }`}
+            >
+              {isSubmitting ? "Processing..." : "Choose from your gallery"}
+            </button>
+          </div>
         </form>
       </div>
     </div>

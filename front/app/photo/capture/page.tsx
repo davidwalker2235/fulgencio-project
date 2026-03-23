@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useRef, useEffect } from "react";
+import { Suspense, useState, useRef, useEffect, ChangeEvent } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "../../constants";
@@ -11,11 +11,14 @@ function PhotoCaptureContent() {
   const fullName = searchParams.get("name") || "";
   const email = searchParams.get("email") || "";
   const linkedInParam = searchParams.get("linkedIn")?.trim() || "";
+  const photoSource = searchParams.get("source") || "camera";
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [isPhotoFromGallery, setIsPhotoFromGallery] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>("Sending...");
   const [submitError, setSubmitError] = useState<string>("");
@@ -24,11 +27,18 @@ function PhotoCaptureContent() {
 
   // Iniciar cámara al montar
   useEffect(() => {
-    startCamera();
+    const storedImage = sessionStorage.getItem("photo:selectedImageDataUrl");
+    if (photoSource === "gallery" && storedImage) {
+      setPhoto(storedImage);
+      setIsPhotoFromGallery(true);
+    } else {
+      setIsPhotoFromGallery(false);
+      startCamera();
+    }
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [photoSource]);
 
   const startCamera = async () => {
     try {
@@ -87,15 +97,45 @@ function PhotoCaptureContent() {
         context.restore();
         const photoData = canvas.toDataURL("image/jpeg");
         setPhoto(photoData);
+        setIsPhotoFromGallery(false);
         stopCamera();
       }
     }
+  };
+
+  const handleGalleryFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      if (!dataUrl) {
+        return;
+      }
+      setPhoto(dataUrl);
+      setIsPhotoFromGallery(true);
+      setSubmitError("");
+      stopCamera();
+      e.target.value = "";
+    };
+    reader.onerror = () => {
+      setSubmitError("No se pudo leer la imagen seleccionada.");
+      e.target.value = "";
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleRepeat = () => {
     setPhoto(null);
     setSubmitError("");
     startCamera();
+  };
+
+  const handleChooseAnotherImage = () => {
+    setSubmitError("");
+    galleryInputRef.current?.click();
   };
 
   const handleSend = async () => {
@@ -184,6 +224,9 @@ function PhotoCaptureContent() {
         error instanceof Error ? error.message : "Error inesperado enviando la foto";
       const lower = baseMessage.toLowerCase();
       const message =
+        lower.includes("failed to fetch")
+          ? "No se pudo conectar con el servidor. Verifica que backend y frontend estén accesibles desde el móvil (misma red) y que CORS esté permitido."
+          :
         lower.includes("timeout") || lower.includes("not currently available") || lower.includes("temporalmente no disponible")
           ? "La base de datos está arrancando o tardó en responder. Ya lo intentamos varias veces automáticamente; espera unos segundos e inténtalo de nuevo."
           : baseMessage;
@@ -273,6 +316,13 @@ function PhotoCaptureContent() {
               </>
             )}
             <canvas ref={canvasRef} className="hidden" />
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleGalleryFileChange}
+            />
           </div>
 
           {/* Buttons */}
@@ -305,11 +355,11 @@ function PhotoCaptureContent() {
                   {isLoading ? loadingMessage : "Send"}
                 </button>
                 <button
-                  onClick={handleRepeat}
+                  onClick={isPhotoFromGallery ? handleChooseAnotherImage : handleRepeat}
                   disabled={isLoading}
                   className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-red-500 text-white hover:bg-red-600 active:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Repeat
+                  {isPhotoFromGallery ? "Choose another image" : "Repeat"}
                 </button>
               </div>
             </div>

@@ -45,7 +45,7 @@ cors_origins_exact = [o for o in cors_origins if "*" not in o]
 # Regex para Azure Container Apps: cualquier subdominio .azurecontainerapps.io
 cors_origin_regex = os.getenv(
     "CORS_ORIGIN_REGEX",
-    r"^https://[a-zA-Z0-9][a-zA-Z0-9.-]*\.azurecontainerapps\.io$",
+    r"(^https://[a-zA-Z0-9][a-zA-Z0-9.-]*\.azurecontainerapps\.io$)|(^https?://(localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(:\d+)?$)",
 ).strip()
 
 app.add_middleware(
