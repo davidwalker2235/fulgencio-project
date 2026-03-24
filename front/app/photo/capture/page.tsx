@@ -341,9 +341,25 @@ function PhotoCaptureContent() {
               <button
                 onClick={handleShot}
                 disabled={!streamRef.current || !!cameraError || isCameraStarting}
-                className="w-full py-3 px-6 rounded-lg font-semibold text-base bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full py-3 px-5 rounded-full font-semibold text-base transition-all ${
+                  !streamRef.current || !!cameraError || isCameraStarting
+                    ? "bg-white/70 text-[#033778]/60 cursor-not-allowed"
+                    : "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
+                }`}
               >
-                Shot
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-[#033778] shrink-0">
+                    <Image
+                      src="/photo-camera.svg"
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="h-4 w-4 sm:h-5 sm:w-5 object-contain brightness-0 invert"
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <span>Shot</span>
+                </span>
               </button>
             </div>
           ) : (
@@ -352,16 +368,48 @@ function PhotoCaptureContent() {
                 <button
                   onClick={handleSend}
                   disabled={isLoading}
-                  className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-green-500 text-white hover:bg-green-600 active:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex-1 py-3 px-5 rounded-full font-semibold text-base transition-all ${
+                    isLoading
+                      ? "bg-white/70 text-[#033778]/60 cursor-not-allowed"
+                      : "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
+                  }`}
                 >
-                  {isLoading ? loadingMessage : "Send"}
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-[#033778] shrink-0">
+                      <Image
+                        src="/send.svg"
+                        alt=""
+                        width={20}
+                        height={20}
+                        className="h-4 w-4 sm:h-5 sm:w-5 object-contain brightness-0 invert"
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span>{isLoading ? loadingMessage : "Send"}</span>
+                  </span>
                 </button>
                 <button
                   onClick={isPhotoFromGallery ? handleChooseAnotherImage : handleRepeat}
                   disabled={isLoading}
-                  className="flex-1 py-3 px-6 rounded-lg font-semibold text-base bg-red-500 text-white hover:bg-red-600 active:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex-1 py-3 px-5 rounded-full font-semibold text-base transition-all ${
+                    isLoading
+                      ? "bg-white/70 text-[#033778]/60 cursor-not-allowed"
+                      : "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
+                  }`}
                 >
-                  {isPhotoFromGallery ? "Choose another image" : "Repeat"}
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-[#033778] shrink-0">
+                      <Image
+                        src="/repeat.svg"
+                        alt=""
+                        width={20}
+                        height={20}
+                        className="h-4 w-4 sm:h-5 sm:w-5 object-contain brightness-0 invert"
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span>{isPhotoFromGallery ? "Change" : "Repeat"}</span>
+                  </span>
                 </button>
               </div>
             </div>
