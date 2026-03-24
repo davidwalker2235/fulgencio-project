@@ -1,16 +1,15 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 
 function PhotoCodeContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const code = searchParams.get("code") || "";
 
   const handleFinish = () => {
-    router.push("/photo");
+    window.location.href = "https://www.linkedin.com/company/erni/";
   };
 
   return (
@@ -31,14 +30,17 @@ function PhotoCodeContent() {
           />
         </div>
       </div>
-
-      {/* Code Display */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
+      <div className="flex-1 flex flex-col items-center px-4 pb-8 pt-8">
         <div className="w-full max-w-md flex flex-col items-center space-y-8">
+          <div className="w-full flex justify-center px-2">
+            <span className="text-white text-center text-xl sm:text-2xl font-semibold leading-snug">
+              Remember this number and give it to our robot to get your caricature drawn.
+            </span>
+          </div>
           <div 
             className="text-white text-center font-bold"
             style={{
-              fontSize: "clamp(3rem, 15vw, 8rem)",
+              fontSize: "clamp(10rem, 15vw, 8rem)",
               letterSpacing: "0.1em",
               lineHeight: "1.2",
             }}
@@ -51,7 +53,7 @@ function PhotoCodeContent() {
             onClick={handleFinish}
             className="w-full max-w-xs py-3 px-6 rounded-lg font-semibold text-base bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200 transition-colors"
           >
-            Finish
+            Know more about ERNI
           </button>
         </div>
       </div>

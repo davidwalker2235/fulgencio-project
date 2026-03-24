@@ -42,7 +42,12 @@ export default function PhotoFormPage() {
     }
   };
 
-  const isFormValid = fullName.trim() !== "" && email.trim() !== "" && validateEmail(email);
+  const isFormValid =
+    fullName.trim() !== "" &&
+    email.trim() !== "" &&
+    realName.trim() !== "" &&
+    workName.trim() !== "" &&
+    validateEmail(email);
 
   const buildCaptureParams = () => {
     const params = new URLSearchParams({
@@ -159,6 +164,7 @@ export default function PhotoFormPage() {
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              maxLength={12}
               placeholder="Name to show in the caricarute"
               className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
               required
@@ -191,10 +197,11 @@ export default function PhotoFormPage() {
               onChange={(e) => setRealName(e.target.value)}
               placeholder="Your real name"
               className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
+              required
             />
           </div>
 
-          {/* Company Input (optional) */}
+          {/* Company Input */}
           <div className="w-full">
             <input
               type="text"
@@ -202,6 +209,7 @@ export default function PhotoFormPage() {
               onChange={(e) => setWorkName(e.target.value)}
               placeholder="Company where you work"
               className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
+              required
             />
           </div>
 
@@ -218,25 +226,49 @@ export default function PhotoFormPage() {
             <button
               type="submit"
               disabled={!isFormValid || isSubmitting}
-              className={`w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
+              className={`w-full py-3 px-5 rounded-full font-semibold text-base transition-all ${
                 isFormValid && !isSubmitting
-                  ? "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
-                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                  ? "bg-white text-[#033778] hover:bg-[#CECECE] active:bg-[#C4C4C4]"
+                  : "bg-[#BEBEBE] text-[#666666] cursor-not-allowed"
               }`}
             >
-              {isSubmitting ? "Processing..." : "Take a photo"}
+              <span className="inline-flex items-center justify-center gap-2">
+                <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-[#033778] shrink-0">
+                  <Image
+                    src="/photo-camera.svg"
+                    alt=""
+                    width={20}
+                    height={20}
+                    className="h-4 w-4 sm:h-5 sm:w-5 object-contain brightness-0 invert"
+                    aria-hidden="true"
+                  />
+                </span>
+                <span>{isSubmitting ? "Processing..." : "Take a photo"}</span>
+              </span>
             </button>
             <button
               type="button"
               onClick={handleGalleryButton}
               disabled={!isFormValid || isSubmitting}
-              className={`w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
+              className={`w-full py-3 px-5 rounded-full font-semibold text-base transition-all ${
                 isFormValid && !isSubmitting
-                  ? "bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200"
-                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                  ? "bg-white text-[#033778] hover:bg-[#CECECE] active:bg-[#C4C4C4]"
+                  : "bg-[#BEBEBE] text-[#666666] cursor-not-allowed"
               }`}
             >
-              {isSubmitting ? "Processing..." : "Choose from your gallery"}
+              <span className="inline-flex items-center justify-center gap-2">
+                <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-[#033778] shrink-0">
+                  <Image
+                    src="/image-gallery.svg"
+                    alt=""
+                    width={20}
+                    height={20}
+                    className="h-4 w-4 sm:h-5 sm:w-5 object-contain brightness-0 invert"
+                    aria-hidden="true"
+                  />
+                </span>
+                <span>{isSubmitting ? "Processing..." : "Choose from your gallery"}</span>
+              </span>
             </button>
           </div>
         </form>
