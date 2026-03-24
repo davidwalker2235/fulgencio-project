@@ -252,7 +252,6 @@ function PhotoCaptureContent() {
     >
       {isLoading && (
         <div className="fixed inset-0 z-50 bg-black/70 flex flex-col items-center justify-center gap-4">
-          <div className="w-12 h-12 rounded-full border-4 border-white/30 border-t-white animate-spin" />
           <p className="text-white text-base font-medium">
             {loadingMessage}
           </p>
