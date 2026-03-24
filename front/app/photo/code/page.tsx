@@ -1,12 +1,25 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 
 function PhotoCodeContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") || "";
+
+  useEffect(() => {
+    const keepUserOnCodePage = () => {
+      window.history.pushState(null, "", window.location.href);
+    };
+
+    keepUserOnCodePage();
+    window.addEventListener("popstate", keepUserOnCodePage);
+
+    return () => {
+      window.removeEventListener("popstate", keepUserOnCodePage);
+    };
+  }, []);
 
   const handleFinish = () => {
     window.location.href = "https://www.linkedin.com/company/erni/";

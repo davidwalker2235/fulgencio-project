@@ -4,6 +4,7 @@ import { Suspense, useState, useRef, useEffect, ChangeEvent } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "../../constants";
+import TimedProgressBar from "../../components/TimedProgressBar";
 
 function PhotoCaptureContent() {
   const router = useRouter();
@@ -22,6 +23,9 @@ function PhotoCaptureContent() {
   const [isPhotoFromGallery, setIsPhotoFromGallery] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>("Sending...");
+  const showGeneratingProgress =
+    isLoading && loadingMessage === "Generating caricature...";
+
   const [submitError, setSubmitError] = useState<string>("");
   const [cameraError, setCameraError] = useState<string>("");
   const [isCameraStarting, setIsCameraStarting] = useState(false);
@@ -219,7 +223,7 @@ function PhotoCaptureContent() {
       const result = await response.json();
       console.log("Caricature generated successfully:", result);
 
-      router.push(`/photo/code?code=${orderNumber}`);
+      router.replace(`/photo/code?code=${orderNumber}`);
     } catch (error) {
       console.error("Error in handleSend:", error);
       const baseMessage =
@@ -250,8 +254,11 @@ function PhotoCaptureContent() {
         <div className="fixed inset-0 z-50 bg-black/70 flex flex-col items-center justify-center gap-4">
           <div className="w-12 h-12 rounded-full border-4 border-white/30 border-t-white animate-spin" />
           <p className="text-white text-base font-medium">
-            Processing photo, please wait...
+            {loadingMessage}
           </p>
+          {showGeneratingProgress && (
+            <TimedProgressBar active durationMs={60_000} />
+          )}
         </div>
       )}
       {submitError && (
@@ -292,7 +299,9 @@ function PhotoCaptureContent() {
               <img
                 src={photo}
                 alt="Captured photo"
-                className="w-full h-full object-cover"
+                className={`w-full h-full ${
+                  isPhotoFromGallery ? "object-contain" : "object-cover"
+                }`}
               />
             ) : (
               <>
@@ -385,7 +394,7 @@ function PhotoCaptureContent() {
                         aria-hidden="true"
                       />
                     </span>
-                    <span>{isLoading ? loadingMessage : "Send"}</span>
+                    <span>Send</span>
                   </span>
                 </button>
                 <button
