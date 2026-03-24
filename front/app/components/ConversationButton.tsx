@@ -1,5 +1,5 @@
 import { ConnectionStatus } from "../types";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ConversationButtonProps {
   isRecording: boolean;
@@ -12,18 +12,50 @@ export default function ConversationButton({
   connectionStatus,
   onToggle,
 }: ConversationButtonProps) {
+  // Set this string when the API URL is known.
+  const NUMERIC_CODE_API_URL = "";
+
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
   const [numericInput, setNumericInput] = useState("");
+  const numericInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showKeyboardInput) {
+      numericInputRef.current?.focus();
+    }
+  }, [showKeyboardInput]);
 
   const handleNumericChange = (value: string) => {
     // Permite solo dígitos.
     setNumericInput(value.replace(/\D/g, ""));
   };
 
-  const handleSubmitNumericInput = () => {
-    // Por ahora solo cerrar el input; más adelante se conectará con la API.
-    setShowKeyboardInput(false);
+  const sendNumericCode = async (code: string) => {
+    if (!NUMERIC_CODE_API_URL) {
+      return;
+    }
+
+    await fetch(NUMERIC_CODE_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+  };
+
+  const handleSubmitNumericInput = async () => {
+    const code = numericInput.trim();
+
+    if (!code) {
+      numericInputRef.current?.focus();
+      return;
+    }
+
+    // Enviar preparado para API futura.
+    await sendNumericCode(code);
+
+    // Mantiene el input abierto y listo para el siguiente código.
     setNumericInput("");
+    numericInputRef.current?.focus();
   };
 
   return (
@@ -32,15 +64,16 @@ export default function ConversationButton({
         <div className="w-full max-w-md px-2">
           <div className="relative">
             <input
+              ref={numericInputRef}
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              autoFocus
               value={numericInput}
               onChange={(e) => handleNumericChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  handleSubmitNumericInput();
+                  e.preventDefault();
+                  void handleSubmitNumericInput();
                 }
               }}
               placeholder="Enter numeric code"
@@ -48,7 +81,9 @@ export default function ConversationButton({
             />
             <button
               type="button"
-              onClick={handleSubmitNumericInput}
+              onClick={() => {
+                void handleSubmitNumericInput();
+              }}
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 text-blue-600 hover:bg-blue-50"
               aria-label="Send code"
               title="Send"

@@ -149,29 +149,12 @@ export default function PhotoFormPage() {
       {/* Form Container */}
       <div className="flex-1 flex flex-col items-center justify-start px-4 pb-8">
         <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6 mt-4" noValidate>
-          {/* Lorem Ipsum Text */}
-          <div className="text-white text-sm sm:text-base leading-relaxed text-center px-2">
-            <p>
-            Please enter your name and email so that our robot can identify you.
-            </p>
-            <p className="mt-2">
-            Your photo will be deleted once the experience is finished.
-            </p>
-            <p className="mt-2">
-            Once the photo has been processed, you will be given a number that you will need to provide to the robot.
-            </p>
-            <p className="mt-2">
-            Please, don't forget the number.
-            </p>
-          </div>
-
-          {/* Full Name Input */}
           <div className="w-full">
             <input
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Your Nickname"
+              placeholder="Name to show in the caricarute"
               className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
               required
             />
