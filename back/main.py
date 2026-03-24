@@ -361,11 +361,20 @@ def init_azure_sql_users_table() -> None:
                     full_name NVARCHAR(500) NOT NULL,
                     email NVARCHAR(500) NOT NULL,
                     [timestamp] NVARCHAR(100) NOT NULL,
-                    linked_in NVARCHAR(2000) NULL,
+                    real_name NVARCHAR(500) NULL,
+                    work_name NVARCHAR(500) NULL,
                     request_id NVARCHAR(64) NULL,
                     caricature NVARCHAR(MAX) NULL,
                     caricature_timestamp NVARCHAR(100) NULL
                 );
+            """)
+            cursor.execute("""
+                IF COL_LENGTH('users', 'real_name') IS NULL
+                ALTER TABLE users ADD real_name NVARCHAR(500) NULL;
+            """)
+            cursor.execute("""
+                IF COL_LENGTH('users', 'work_name') IS NULL
+                ALTER TABLE users ADD work_name NVARCHAR(500) NULL;
             """)
             cursor.execute("""
                 IF COL_LENGTH('users', 'request_id') IS NULL
@@ -416,7 +425,8 @@ def warm_up_azure_sql_connection() -> None:
 def insert_user_azure_sql(
     full_name: str,
     email: str,
-    linked_in: Optional[str] = None,
+    real_name: Optional[str] = None,
+    work_name: Optional[str] = None,
     request_id: Optional[str] = None,
 ) -> int:
     """
@@ -435,15 +445,16 @@ def insert_user_azure_sql(
                     return int(existing[0])
             cursor.execute(
                 """
-                INSERT INTO users (full_name, email, [timestamp], linked_in, request_id)
+                INSERT INTO users (full_name, email, [timestamp], real_name, work_name, request_id)
                 OUTPUT INSERTED.id
-                VALUES (?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?);
                 """,
                 (
                     full_name.strip(),
                     email.strip(),
                     datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    linked_in.strip() if linked_in and linked_in.strip() else None,
+                    real_name.strip() if real_name and real_name.strip() else None,
+                    work_name.strip() if work_name and work_name.strip() else None,
                     request_id.strip() if request_id and request_id.strip() else None,
                 ),
             )
@@ -600,7 +611,8 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
 class RegisterUserRequest(BaseModel):
     fullName: str
     email: str
-    linkedIn: Optional[str] = None
+    realName: Optional[str] = None
+    workName: Optional[str] = None
     requestId: Optional[str] = None
 
 
@@ -816,14 +828,16 @@ async def register_user(payload: RegisterUserRequest):
             status_code=400,
             detail="fullName y email son obligatorios",
         )
-    linked_in = (payload.linkedIn or "").strip() or None
+    real_name = (payload.realName or "").strip() or None
+    work_name = (payload.workName or "").strip() or None
     request_id = (payload.requestId or "").strip() or None
     try:
         order_number = await asyncio.to_thread(
             insert_user_azure_sql,
             full_name,
             email,
-            linked_in,
+            real_name,
+            work_name,
             request_id,
         )
         return {"orderNumber": str(order_number)}

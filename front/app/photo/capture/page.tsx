@@ -10,7 +10,8 @@ function PhotoCaptureContent() {
   const searchParams = useSearchParams();
   const fullName = searchParams.get("name") || "";
   const email = searchParams.get("email") || "";
-  const linkedInParam = searchParams.get("linkedIn")?.trim() || "";
+  const realNameParam = searchParams.get("realName")?.trim() || "";
+  const workNameParam = searchParams.get("workName")?.trim() || "";
   const photoSource = searchParams.get("source") || "camera";
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -158,7 +159,8 @@ function PhotoCaptureContent() {
           body: JSON.stringify({
             fullName,
             email,
-            linkedIn: linkedInParam || undefined,
+            realName: realNameParam || undefined,
+            workName: workNameParam || undefined,
             requestId,
           }),
         });

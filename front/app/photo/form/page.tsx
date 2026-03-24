@@ -9,7 +9,8 @@ export default function PhotoFormPage() {
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [linkedIn, setLinkedIn] = useState("");
+  const [realName, setRealName] = useState("");
+  const [workName, setWorkName] = useState("");
   const [emailError, setEmailError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,9 +49,13 @@ export default function PhotoFormPage() {
       name: fullName.trim(),
       email: email.trim(),
     });
-    const linkedInTrimmed = linkedIn.trim();
-    if (linkedInTrimmed) {
-      params.set("linkedIn", linkedInTrimmed);
+    const realNameTrimmed = realName.trim();
+    if (realNameTrimmed) {
+      params.set("realName", realNameTrimmed);
+    }
+    const workNameTrimmed = workName.trim();
+    if (workNameTrimmed) {
+      params.set("workName", workNameTrimmed);
     }
     return params;
   };
@@ -178,13 +183,24 @@ export default function PhotoFormPage() {
             )}
           </div>
 
-          {/* LinkedIn URL Input (opcional) */}
+          {/* Real Name Input (optional) */}
           <div className="w-full">
             <input
-              type="url"
-              value={linkedIn}
-              onChange={(e) => setLinkedIn(e.target.value)}
-              placeholder="LinkedIn profile URL (optional)"
+              type="text"
+              value={realName}
+              onChange={(e) => setRealName(e.target.value)}
+              placeholder="Your real name"
+              className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
+            />
+          </div>
+
+          {/* Company Input (optional) */}
+          <div className="w-full">
+            <input
+              type="text"
+              value={workName}
+              onChange={(e) => setWorkName(e.target.value)}
+              placeholder="Company where you work"
               className="w-full px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#033778]"
             />
           </div>
