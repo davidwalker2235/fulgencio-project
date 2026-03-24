@@ -9,15 +9,27 @@ function PhotoCodeContent() {
   const code = searchParams.get("code") || "";
 
   useEffect(() => {
-    const keepUserOnCodePage = () => {
-      window.history.pushState(null, "", window.location.href);
+    const pushCodeLockState = () => {
+      window.history.pushState({ lockCodePage: true }, "", window.location.href);
     };
 
-    keepUserOnCodePage();
-    window.addEventListener("popstate", keepUserOnCodePage);
+    const handlePopState = () => {
+      // Intenta bloquear el retroceso también en navegadores móviles.
+      window.history.go(1);
+    };
+
+    const handlePageShow = () => {
+      // Re-arma el lock al volver desde bfcache (común en iOS Safari).
+      pushCodeLockState();
+    };
+
+    pushCodeLockState();
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("pageshow", handlePageShow);
 
     return () => {
-      window.removeEventListener("popstate", keepUserOnCodePage);
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("pageshow", handlePageShow);
     };
   }, []);
 
