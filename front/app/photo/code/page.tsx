@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
+import NextUserIndicator from "../../components/NextUserIndicator";
 
 function PhotoCodeContent() {
   const searchParams = useSearchParams();
@@ -55,25 +56,32 @@ function PhotoCodeContent() {
           />
         </div>
       </div>
+      <div className="w-full flex justify-center px-4">
+        <NextUserIndicator className="text-white text-center text-3xl sm:text-5xl font-semibold leading-snug" />
+      </div>
       <div className="flex-1 flex flex-col items-center px-4 pb-8 pt-8">
         <div className="w-full max-w-md flex flex-col items-center space-y-8">
           <div className="w-full flex justify-center px-2">
             <span className="text-white text-center text-xl sm:text-2xl font-semibold leading-snug">
-              Remember this number and give it to our robot to get your caricature drawn.
+              Remember this number and wait for your turn to have your caricature drawn.
             </span>
           </div>
           <div 
             className="text-white text-center font-bold"
             style={{
-              fontSize: "clamp(10rem, 15vw, 8rem)",
+              fontSize: "clamp(8rem, 15vw, 8rem)",
               letterSpacing: "0.1em",
-              lineHeight: "1.2",
+              lineHeight: "1",
             }}
           >
             {code}
           </div>
-          
-          {/* Finish Button */}
+          <div className="w-full flex justify-center px-2">
+            <span className="text-white text-center text-xl sm:text-2xl font-semibold leading-snug">
+              If you miss your turn, you will need to take another photo to get a new number.
+         
+            </span>
+          </div>{/* Finish Button */}
           <button
             onClick={handleFinish}
             className="w-full max-w-xs py-3 px-6 rounded-lg font-semibold text-base bg-white text-[#033778] hover:bg-gray-100 active:bg-gray-200 transition-colors"

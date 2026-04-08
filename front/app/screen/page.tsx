@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { onValue, ref } from "firebase/database";
 import { database } from "../../firebaseConfig";
+import NextUserIndicator from "../components/NextUserIndicator";
 
 export default function Screen() {
   const promoVideoRef = useRef<HTMLVideoElement>(null);
@@ -151,6 +152,11 @@ export default function Screen() {
           >
             about technology
           </h1>
+
+          <NextUserIndicator
+            className="mt-[2%] max-w-[90%] leading-[1.08] tracking-[-0.02em] font-semibold"
+            style={{ color: "#003B88", fontSize: "3.2vh" }}
+          />
 
           <div className="flex items-end gap-[1%] mt-[4%] flex-1 min-h-0 mb-[10%]">
             <div className="relative shrink-0 w-[35%] aspect-square max-w-[220px]">
