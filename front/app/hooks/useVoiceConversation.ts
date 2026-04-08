@@ -677,9 +677,6 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     write("currentUser", null).catch((err) => {
       console.error("❌ Error reseteando currentUser a null:", err);
     });
-    write("current_user", null).catch((err) => {
-      console.error("❌ Error reseteando current_user a null:", err);
-    });
     write("robot_action", null).catch((err) => {
       console.error("❌ Error reseteando robot_action a null:", err);
     });
