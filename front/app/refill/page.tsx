@@ -14,7 +14,8 @@ export default function RefillPage() {
 
     try {
       await set(ref(database, "status"), "idle");
-      setMessage("Status actualizado a idle.");
+      await set(ref(database, "robot_action"), null);
+      setMessage("Status y robot_action actualizado a idle.");
     } catch (error) {
       console.error("Error actualizando status:", error);
       setMessage("No se pudo actualizar status.");

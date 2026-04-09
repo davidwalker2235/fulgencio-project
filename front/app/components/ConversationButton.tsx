@@ -12,8 +12,7 @@ export default function ConversationButton({
   connectionStatus,
   onToggle,
 }: ConversationButtonProps) {
-  // Set this string when the API URL is known.
-  const NUMERIC_CODE_API_URL = "";
+  const NUMERIC_CODE_API_PATH = "/api/draw-robot-caricature";
 
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
   const [numericInput, setNumericInput] = useState("");
@@ -31,15 +30,15 @@ export default function ConversationButton({
   };
 
   const sendNumericCode = async (code: string) => {
-    if (!NUMERIC_CODE_API_URL) {
-      return;
-    }
-
-    await fetch(NUMERIC_CODE_API_URL, {
+    const response = await fetch(`${NUMERIC_CODE_API_PATH}?user_id=${encodeURIComponent(code)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: "{}",
     });
+
+    if (!response.ok) {
+      throw new Error(`Failed to send numeric code. Status: ${response.status}`);
+    }
   };
 
   const handleSubmitNumericInput = async () => {
@@ -50,8 +49,13 @@ export default function ConversationButton({
       return;
     }
 
-    // Enviar preparado para API futura.
-    await sendNumericCode(code);
+    try {
+      await sendNumericCode(code);
+    } catch (error) {
+      console.error("Error sending numeric code:", error);
+      numericInputRef.current?.focus();
+      return;
+    }
 
     // Mantiene el input abierto y listo para el siguiente código.
     setNumericInput("");
