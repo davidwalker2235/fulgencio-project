@@ -6,7 +6,10 @@ import { onValue, ref } from "firebase/database";
 import { database } from "../../firebaseConfig";
 import NextUserIndicator from "../components/NextUserIndicator";
 
-const CENTER_ALTERNATE_MS = 5_000;
+/** Vista QR + texto: cuánto tiempo se muestra antes del bloque Meta Quest */
+const CENTER_QR_VISIBLE_MS = 120_000;
+/** Vista "Participate..." + GIF: cuánto tiempo se muestra antes de volver al QR */
+const CENTER_METAQUEST_VISIBLE_MS = 30_000;
 
 export default function Screen() {
   const promoVideoRef = useRef<HTMLVideoElement>(null);
@@ -109,11 +112,14 @@ export default function Screen() {
   }, [stopCamera]);
 
   useEffect(() => {
-    const id = window.setInterval(() => {
+    const delay = centerShowsMetaquestGif
+      ? CENTER_METAQUEST_VISIBLE_MS
+      : CENTER_QR_VISIBLE_MS;
+    const id = window.setTimeout(() => {
       setCenterShowsMetaquestGif((prev) => !prev);
-    }, CENTER_ALTERNATE_MS);
-    return () => window.clearInterval(id);
-  }, []);
+    }, delay);
+    return () => window.clearTimeout(id);
+  }, [centerShowsMetaquestGif]);
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full max-w-none flex-row overflow-hidden bg-black">
@@ -140,7 +146,7 @@ export default function Screen() {
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col justify-center py-[1%]">
-          {centerShowsMetaquestGif || !centerShowsMetaquestGif ? (
+          {centerShowsMetaquestGif ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-0 px-[2%] text-center">
               <p
                 className="mb-0 w-full max-w-full shrink-0 pb-0 leading-[1.05] tracking-[-0.02em] font-semibold text-[#003B88]"
@@ -148,11 +154,11 @@ export default function Screen() {
               >
                 Participate and win a
               </p>
-              <div className="relative -mt-[min(1.2vw,2dvh)] flex min-h-0 w-full max-w-full flex-1 min-w-0 items-center justify-center">
+              <div className="relative -mt-[min(2vw,3.5dvh)] flex min-h-0 w-full max-w-full flex-1 min-w-0 items-center justify-center">
                 <img
                   src="/metaquest.gif"
                   alt="Meta Quest 3S"
-                  className="max-h-full max-w-full object-contain"
+                  className="max-h-full max-w-full object-contain translate-y-[-12%]"
                   draggable={false}
                 />
                 <div
@@ -164,11 +170,12 @@ export default function Screen() {
                 >
                   <p
                     className="text-center font-semibold leading-[1.02] tracking-[-0.02em] text-[#003B88]"
-                    style={{ fontSize: "min(7.6vw, 13dvh)" }}
+                    style={{ fontSize: "min(5.6vw, 13dvh)" }}
                   >
                     Meta Quest 3S!
                   </p>
                 </div>
+          
               </div>
             </div>
           ) : (
