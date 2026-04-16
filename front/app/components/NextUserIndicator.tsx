@@ -71,10 +71,16 @@ export default function NextUserIndicator({ className, style }: NextUserIndicato
   const nextUserId = currentUserId !== null ? currentUserId + 1 : null;
 
   return (
-    <p className={className} style={style}>
-      Next Caricature:{" "}
-      <span style={{ color: "red" }}>
-        {nextUserId ?? "-"}
+    <p className={["m-0", className].filter(Boolean).join(" ")} style={style}>
+      {/* flex interno + leading-none: evita el hueco bajo el texto del line-height en bloque */}
+      <span className="flex max-w-full flex-row flex-wrap items-end gap-x-1 leading-none">
+        <span className="shrink-0">Next number:</span>
+        <span
+          className="shrink-0 font-semibold leading-none"
+          style={{ color: "red", fontSize: "200%", lineHeight: 1 }}
+        >
+          {nextUserId ?? "-"}
+        </span>
       </span>
     </p>
   );

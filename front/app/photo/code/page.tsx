@@ -57,7 +57,7 @@ function PhotoCodeContent() {
         </div>
       </div>
       <div className="w-full flex justify-center px-4">
-        <NextUserIndicator className="text-white text-center text-3xl sm:text-5xl font-semibold leading-snug" />
+        <NextUserIndicator className="text-white text-center text-3xl sm:text-5xl font-semibold leading-snug [&>span]:justify-center" />
       </div>
       <div className="flex-1 flex flex-col items-center px-4 pb-8 pt-8">
         <div className="w-full max-w-md flex flex-col items-center space-y-8">

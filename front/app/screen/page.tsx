@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
@@ -10,8 +10,6 @@ export default function Screen() {
   const promoVideoRef = useRef<HTMLVideoElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [isVideoVisible, setIsVideoVisible] = useState(false);
   const [isScreenOn, setIsScreenOn] = useState(false);
 
   const stopCamera = useCallback(() => {
@@ -54,7 +52,7 @@ export default function Screen() {
       setIsScreenOn(
         status !== null &&
           status !== undefined &&
-          String(status).toLowerCase() !== "idle"
+          String(status).toLowerCase() !== "idle" && String(status).toLowerCase() !== "offline"
       );
     });
 
@@ -63,32 +61,10 @@ export default function Screen() {
     };
   }, []);
 
-  const scheduleNextPlayback = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    timeoutRef.current = setTimeout(() => {
-      const video = promoVideoRef.current;
-      if (!video) return;
-
-      video.currentTime = 0;
-      setIsVideoVisible(true);
-      void video.play().catch(() => {
-        setIsVideoVisible(false);
-        scheduleNextPlayback();
-      });
-    }, 120000);
-  }, []);
-
   useEffect(() => {
+    const promoVideo = promoVideoRef.current;
+
     if (isScreenOn) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      setIsVideoVisible(false);
-      const promoVideo = promoVideoRef.current;
       if (promoVideo) {
         promoVideo.pause();
         promoVideo.currentTime = 0;
@@ -98,81 +74,88 @@ export default function Screen() {
     }
 
     stopCamera();
-    scheduleNextPlayback();
-  }, [isScreenOn, scheduleNextPlayback, startCamera, stopCamera]);
+    if (!promoVideo) {
+      return;
+    }
+
+    let cancelled = false;
+    const playPromo = () => {
+      if (cancelled) return;
+      void promoVideo.play().catch((error) => {
+        console.error("No se pudo reproducir el vídeo promocional:", error);
+      });
+    };
+
+    // Mismo nodo <video> siempre montado; si aún no hay datos suficientes, esperar a canplay
+    if (promoVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      playPromo();
+    } else {
+      promoVideo.addEventListener("canplay", playPromo, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      promoVideo.removeEventListener("canplay", playPromo);
+    };
+  }, [isScreenOn, startCamera, stopCamera]);
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
       stopCamera();
     };
   }, [stopCamera]);
 
-  const handleVideoEnded = () => {
-    setIsVideoVisible(false);
-    scheduleNextPlayback();
-  };
-
   return (
-    <div className="h-[100dvh] w-full overflow-hidden bg-black flex items-center justify-center">
-      {/* Canvas con relación de aspecto fija 9:16 (vertical) que escala para caber en cualquier pantalla */}
-      <div
-        className="flex flex-col overflow-hidden bg-white shrink-0"
-        style={{
-          aspectRatio: "9/16",
-          width: "min(56.25dvh, 100vw)",
-          height: "min(100dvh, 177.78vw)",
-        }}
-      >
-        {/* Parte superior: logo, título, QR y texto (aprox. 60% del canvas) */}
-        <section className="flex-[0_0_50%] min-h-0 w-full bg-white flex flex-col px-[6%] pt-[3%] pb-[2%]">
-          <div className="w-[45%]">
-            <Image
-              src="/erni-logo-dark-blue.png"
-              alt="ERNI"
-              width={1024}
-              height={203}
-              className="h-auto w-full object-contain"
-              priority
-              sizes="28vw"
+    <div className="flex h-[100dvh] min-h-0 w-full max-w-none flex-row overflow-hidden bg-black">
+      {/* Ancho completo del viewport en cualquier tamaño de pantalla (sin bandas laterales) */}
+      <section className="flex min-h-0 min-w-0 flex-[0_0_46%] flex-col bg-white px-[4%] py-[3%] pl-[5%]">
+        <header className="shrink-0 pb-[3%]">
+          <div className="flex flex-row items-end gap-[7%]">
+            <div className="w-[55%] max-w-[280px] shrink-0">
+              <Image
+                src="/erni-logo-dark-blue.png"
+                alt="ERNI"
+                width={1024}
+                height={203}
+                className="h-auto w-full object-contain"
+                priority
+                sizes="22vw"
+              />
+            </div>
+            <NextUserIndicator
+              className="max-w-[95%] min-w-0 flex-1 tracking-[-0.02em] font-semibold"
+              style={{ color: "#003B88", fontSize: "min(2.2vw, 3.8dvh)" }}
             />
           </div>
+        </header>
 
-          <h1
-            className="mt-[6%] max-w-[90%] leading-[1.08] tracking-[-0.02em] font-semibold"
-            style={{ color: "#003B88", fontSize: "5.2vh" }}
-          >
-            People passionate
-          </h1>
-          <h1
-            className="max-w-[90%] leading-[1.08] tracking-[-0.02em] font-semibold"
-            style={{ color: "#003B88", fontSize: "5.2vh" }}
-          >
-            about technology
-          </h1>
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-[4%] py-[1%]">
+          <div className="flex flex-col gap-[2%]">
+            <h1
+              className="max-w-[95%] leading-[1.08] tracking-[-0.02em] font-semibold"
+              style={{ color: "#003B88", fontSize: "min(3.8vw, 6.5dvh)" }}
+            >
+              Get your caricature!
+         
+            </h1>
+          </div>
 
-          <NextUserIndicator
-            className="mt-[2%] max-w-[90%] leading-[1.08] tracking-[-0.02em] font-semibold"
-            style={{ color: "#003B88", fontSize: "3.2vh" }}
-          />
-
-          <div className="flex items-end gap-[1%] mt-[4%] flex-1 min-h-0 mb-[10%]">
-            <div className="relative shrink-0 w-[35%] aspect-square max-w-[220px]">
+          <div className="flex min-h-0 items-end gap-[2%]">
+            <div className="relative aspect-square w-[64%] max-w-[min(320px,44vw)] shrink-0">
               <Image
-                src="/QRcode.png"
+                src="/photoQRcode.png"
                 alt="Código QR"
                 fill
                 className="object-contain"
-                sizes="18vw"
+                sizes="28vw"
               />
             </div>
+      
 
-            <div className="flex items-end gap-[2%] flex-1 min-w-0 h-full">
+            <div className="flex min-h-0 min-w-0 flex-1 items-end gap-[3%]">
               <svg
                 viewBox="0 0 180 90"
-                className="shrink-0 w-[25%] h-auto max-w-[120px] h-full"
+                className="h-auto max-h-[45%] w-[22%] max-w-[100px] shrink-0"
                 fill="none"
                 aria-hidden="true"
               >
@@ -191,52 +174,43 @@ export default function Screen() {
                 />
               </svg>
               <p
-                className="text-[#4B4F58] font-normal leading-[1.06] tracking-[-0.01em] pb-[0.5%]"
-                style={{ fontSize: "3.2vh" }}
+                className="pb-[0.5%] font-normal leading-[1.06] tracking-[-0.01em] text-[#4B4F58]"
+                style={{ fontSize: "min(2.2vw, 3.8dvh)" }}
               >
-                Build the future
-                <br />
-                with us
+                Scan the QR code
               </p>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Parte inferior: imagen/vídeo (aprox. 40% del canvas) */}
-        <section className="relative flex-[0_0_50%] min-h-0 w-full overflow-hidden bg-black">
-          {isScreenOn ? (
-            <video
-              ref={cameraVideoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              muted
-              playsInline
-            />
-          ) : (
-            <>
-              {!isVideoVisible && (
-                <Image
-                  src="/screen-image.png"
-                  alt="Fondo de pantalla"
-                  fill
-                  className="object-cover"
-                  sizes="100vw"
-                  priority
-                />
-              )}
+        <footer className="shrink-0 border-t border-[#e8ecf2] pt-[3%]">
+          <p
+            className="font-semibold tracking-tight text-[#003B88]"
+            style={{ fontSize: "min(2.4vw, 4.2dvh)" }}
+          >
+            #ERNIxCodemotion
+          </p>
+        </footer>
+      </section>
 
-              <video
-                ref={promoVideoRef}
-                className={`absolute inset-0 w-full h-full object-cover ${isVideoVisible ? "opacity-100" : "opacity-0"}`}
-                src="/the-ernian-journey.mp4"
-                muted
-                playsInline
-                onEnded={handleVideoEnded}
-              />
-            </>
-          )}
-        </section>
-      </div>
+      <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
+        {/* Los dos vídeos permanecen montados para que el ref del promocional no se pierda al alternar con la cámara */}
+        <video
+          ref={promoVideoRef}
+          className={`absolute inset-0 h-full w-full object-cover ${isScreenOn ? "z-0 opacity-0" : "z-10 opacity-100"}`}
+          src="/the-ernian-journey.mp4"
+          muted
+          playsInline
+          loop
+        />
+        <video
+          ref={cameraVideoRef}
+          className={`absolute inset-0 h-full w-full object-cover ${isScreenOn ? "z-10 opacity-100" : "z-0 opacity-0"}`}
+          autoPlay
+          muted
+          playsInline
+        />
+      </section>
     </div>
   );
 }
