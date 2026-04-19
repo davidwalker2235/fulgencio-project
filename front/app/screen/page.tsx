@@ -127,17 +127,6 @@ export default function Screen() {
       <section className="flex min-h-0 min-w-0 flex-[0_0_46%] flex-col bg-white px-[4%] py-[3%] pl-[5%]">
         <header className="shrink-0 pb-[3%]">
           <div className="flex flex-row items-end gap-[7%]">
-            <div className="w-[55%] max-w-[280px] shrink-0">
-              <Image
-                src="/erni-logo-dark-blue.png"
-                alt="ERNI"
-                width={1024}
-                height={203}
-                className="h-auto w-full object-contain"
-                priority
-                sizes="22vw"
-              />
-            </div>
             <NextUserIndicator
               className="max-w-[95%] min-w-0 flex-1 tracking-[-0.02em] font-semibold"
               style={{ color: "#003B88", fontSize: "min(2.2vw, 3.8dvh)" }}
