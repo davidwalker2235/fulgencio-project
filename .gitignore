@@ -98,6 +98,8 @@ back/celerybeat.pid
 back/**/*.sage.py
 
 # Environments
+.venv/
+venv/
 back/venv/
 back/env/
 back/ENV/
@@ -239,6 +241,7 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 .nfs*
+__pycache__/
 
 # ===========================================
 # Logs y Archivos Temporales
@@ -253,6 +256,9 @@ logs/
 *.bak
 *.swp
 *.swo
+
+# ExportaciÃ³n local de caricaturas (script scripts/export_caricatures.py)
+caricatures/
 
 # ===========================================
 # Archivos de Configuración Sensibles
