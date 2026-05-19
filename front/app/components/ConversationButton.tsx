@@ -21,6 +21,7 @@ export default function ConversationButton({
   useEffect(() => {
     if (showKeyboardInput) {
       numericInputRef.current?.focus();
+      setNumericInput("");
     }
   }, [showKeyboardInput]);
 
@@ -60,6 +61,10 @@ export default function ConversationButton({
     // Mantiene el input abierto y listo para el siguiente código.
     setNumericInput("");
     numericInputRef.current?.focus();
+  };
+
+  const isButtonDisabled = () => {
+    return connectionStatus === "Connecting" || (showKeyboardInput && !numericInput.trim());
   };
 
   return (
@@ -110,8 +115,8 @@ export default function ConversationButton({
 
       <div className="flex justify-center gap-4">
         <button
-          onClick={onToggle}
-          disabled={connectionStatus === "Connecting"}
+          onClick={showKeyboardInput ? handleSubmitNumericInput : onToggle}
+          disabled={isButtonDisabled()}
           className={`px-8 py-4 rounded-full text-lg font-semibold transition-all ${
             isRecording
               ? "bg-red-500 hover:bg-red-600 text-white"
@@ -120,6 +125,8 @@ export default function ConversationButton({
         >
           {connectionStatus === "Connecting"
             ? "Connecting..."
+            : showKeyboardInput
+            ? "Send Number"
             : isRecording
             ? "Stop Conversation"
             : "Start Conversation"}
