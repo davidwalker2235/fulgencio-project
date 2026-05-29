@@ -16,18 +16,50 @@ export default function ConversationButton({
 
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
   const [numericInput, setNumericInput] = useState("");
+  const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
   const numericInputRef = useRef<HTMLInputElement>(null);
+  const successSnackbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (showKeyboardInput) {
       numericInputRef.current?.focus();
-      setNumericInput("");
     }
   }, [showKeyboardInput]);
+
+  useEffect(() => {
+    return () => {
+      if (successSnackbarTimeoutRef.current) {
+        clearTimeout(successSnackbarTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleNumericChange = (value: string) => {
     // Permite solo dígitos.
     setNumericInput(value.replace(/\D/g, ""));
+  };
+
+  const showSuccessMessage = () => {
+    setShowSuccessSnackbar(true);
+
+    if (successSnackbarTimeoutRef.current) {
+      clearTimeout(successSnackbarTimeoutRef.current);
+    }
+
+    successSnackbarTimeoutRef.current = setTimeout(() => {
+      setShowSuccessSnackbar(false);
+      successSnackbarTimeoutRef.current = null;
+    }, 3000);
+  };
+
+  const handleToggleKeyboardInput = () => {
+    setShowKeyboardInput((prev) => {
+      const nextValue = !prev;
+      if (nextValue) {
+        setNumericInput("");
+      }
+      return nextValue;
+    });
   };
 
   const sendNumericCode = async (code: string) => {
@@ -60,6 +92,7 @@ export default function ConversationButton({
 
     // Mantiene el input abierto y listo para el siguiente código.
     setNumericInput("");
+    showSuccessMessage();
     numericInputRef.current?.focus();
   };
 
@@ -71,6 +104,20 @@ export default function ConversationButton({
     <div className="flex flex-col items-center gap-3">
       {showKeyboardInput && (
         <div className="w-full max-w-md px-2">
+          <div
+            className={`mb-3 flex justify-center transition-all duration-300 ${
+              showSuccessSnackbar
+                ? "pointer-events-auto translate-y-0 opacity-100"
+                : "pointer-events-none -translate-y-3 opacity-0"
+            }`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <div className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-950/25 backdrop-blur-sm">
+              Number sent successfully
+            </div>
+          </div>
+
           <div className="relative">
             <input
               ref={numericInputRef}
@@ -134,7 +181,7 @@ export default function ConversationButton({
 
         <button
           type="button"
-          onClick={() => setShowKeyboardInput((prev) => !prev)}
+          onClick={handleToggleKeyboardInput}
           className="px-4 py-4 rounded-full bg-white/95 text-zinc-900 hover:bg-white transition-colors shadow-md"
           aria-label="Open keyboard input"
           title="Keyboard input"
