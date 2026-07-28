@@ -77,6 +77,13 @@ resource "azurerm_role_assignment" "acr_pull" {
   principal_type                   = "ServicePrincipal"
   skip_service_principal_aad_check = true
 
+  # Este flag solo interviene durante la creación. Azure no lo expone al
+  # consultar un role assignment ya existente, por lo que tras un import
+  # Terraform intentaría una actualización que el recurso no soporta.
+  lifecycle {
+    ignore_changes = [skip_service_principal_aad_check]
+  }
+
   # Asegurar que el role assignment se cree antes de los Container Apps
   depends_on = [
     azurerm_user_assigned_identity.main,
