@@ -361,6 +361,9 @@ jobs:
           import_if_missing() {
             address="$1"
             resource_id="$2"
+            # az CLI puede devolver "resourcegroups" en minúsculas. Los
+            # parsers de IDs de Terraform requieren el segmento canónico.
+            resource_id=$(sed -E 's#/[Rr][Ee][Ss][Oo][Uu][Rr][Cc][Ee][Gg][Rr][Oo][Uu][Pp][Ss]/#/resourceGroups/#g' <<< "$resource_id")
             if [ -n "$resource_id" ] && ! terraform state show "$address" >/dev/null 2>&1; then
               terraform import "$address" "$resource_id"
             fi
