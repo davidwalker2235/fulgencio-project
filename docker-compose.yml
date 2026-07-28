@@ -1,21 +1,47 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: ./back
       dockerfile: Dockerfile
     container_name: fulgencio-backend
+    env_file:
+      - ./back/.env
     ports:
       - "8000:8000"
     environment:
-      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
-      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-10-01-preview}
-      - MODEL_NAME=${MODEL_NAME:-gpt-realtime}
+      - LITELLM_PROXY_HTTP_URL=http://litellm:4000
+      - LITELLM_PROXY_WS_URL=ws://litellm:4000
+      - LITELLM_PROXY_API_KEY=${LITELLM_MASTER_KEY:-sk-litellm-local-dev}
     volumes:
       - ./back:/app
     restart: unless-stopped
+    depends_on:
+      litellm:
+        condition: service_healthy
+    networks:
+      - fulgencio-network
+
+  litellm:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    container_name: fulgencio-litellm
+    env_file:
+      - ./back/.env
+    command: ["python", "/app/run_litellm_proxy.py"]
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-local-dev}
+      - LITELLM_HOST=0.0.0.0
+      - LITELLM_PORT=4000
+    volumes:
+      - ./back:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4000/health/liveliness"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
     networks:
       - fulgencio-network
 

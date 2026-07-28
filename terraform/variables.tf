@@ -86,12 +86,22 @@ variable "azure_openai_endpoint" {
   description = "Endpoint de Azure OpenAI"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = can(regex("^https://", var.azure_openai_endpoint))
+    error_message = "azure_openai_endpoint debe ser una URL HTTPS."
+  }
 }
 
 variable "azure_openai_api_key" {
   description = "API Key de Azure OpenAI"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.azure_openai_api_key)) > 0
+    error_message = "azure_openai_api_key no puede estar vacía."
+  }
 }
 
 variable "azure_openai_api_version" {
@@ -103,7 +113,18 @@ variable "azure_openai_api_version" {
 variable "model_name" {
   description = "Nombre del modelo de Azure OpenAI"
   type        = string
-  default     = "gpt-realtime"
+  default     = "gpt-realtime-1.5"
+}
+
+variable "litellm_master_key" {
+  description = "Clave interna del LiteLLM Proxy"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = startswith(var.litellm_master_key, "sk-") && length(var.litellm_master_key) >= 16
+    error_message = "litellm_master_key debe empezar por sk- y tener al menos 16 caracteres."
+  }
 }
 
 variable "cors_origins" {
@@ -126,11 +147,22 @@ variable "erni_agent_url" {
   sensitive   = true
 }
 
-# Imagen / caricaturas (Azure OpenAI gpt-image-1.5)
+# Imagen / caricaturas (Azure OpenAI gpt-image-2)
 variable "model_image_name" {
   description = "Nombre del modelo de imagen Azure OpenAI"
   type        = string
-  default     = "gpt-image-1.5"
+  default     = "gpt-image-2"
+}
+
+variable "azure_openai_image_api_key" {
+  description = "API Key de Azure OpenAI para imágenes"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.azure_openai_image_api_key)) > 0
+    error_message = "azure_openai_image_api_key no puede estar vacía."
+  }
 }
 
 variable "azure_openai_image_api_version" {
@@ -154,7 +186,11 @@ variable "azure_openai_image_endpoint" {
 variable "azure_openai_image_edits_endpoint" {
   description = "Endpoint de edición de imágenes para caricaturas (vacío = se construye desde azure_openai_endpoint)"
   type        = string
-  default     = ""
+
+  validation {
+    condition     = can(regex("^https://", var.azure_openai_image_edits_endpoint))
+    error_message = "azure_openai_image_edits_endpoint debe ser una URL HTTPS."
+  }
 }
 
 # Firebase (backend: status, robot_action, etc.)

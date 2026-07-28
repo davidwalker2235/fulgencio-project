@@ -1,30 +1,30 @@
 # Backend - GPT Realtime Voice API
 
-Backend in Python with FastAPI for maintaining voice conversations with the GPT Realtime model deployed on Microsoft Foundry.
+Backend in Python with FastAPI. AI requests are routed through LiteLLM: the Realtime WebSocket uses the LiteLLM Proxy and image edits use the LiteLLM Python SDK.
 
 ## Setup
 
 1. Create a virtual environment:
 ```bash
-python -m venv venv
+python -m venv .venv
 ```
 
 2. Activate the virtual environment:
-- Windows: `venv\Scripts\activate`
-- Linux/Mac: `source venv/bin/activate`
+- Windows: `.venv\Scripts\activate`
+- Linux/Mac: `source .venv/bin/activate`
 
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Configure environment variables:
-- Copy `.env.example` to `.env`
-- Edit `.env` with your Microsoft Foundry credentials:
-  - `AZURE_OPENAI_ENDPOINT`: URL of your Azure OpenAI endpoint
-  - `AZURE_OPENAI_API_KEY`: Your API key
-  - `AZURE_OPENAI_API_VERSION`: API version (default: 2024-10-01-preview)
-  - `MODEL_NAME`: Model name (default: gpt-realtime)
+4. Configure environment variables in `back/.env`:
+  - `MODEL_NAME=gpt-realtime-1.5`
+  - `MODEL_IMAGE_NAME=gpt-image-2`
+  - `LITELLM_MASTER_KEY`: internal key used by the backend and Proxy
+  - Azure endpoint and provider keys used by `litellm_config.yaml`
+
+`docker-compose.yml` loads `back/.env` for local development and supplies a local internal key if `LITELLM_MASTER_KEY` is absent.
 
 5. Run the server:
 ```bash
@@ -57,15 +57,18 @@ The server will be available at `http://localhost:8000`
 - **Framework**: FastAPI
 - **WebSocket**: Native WebSocket support for real-time communication
 - **Audio Format**: PCM16 at 24kHz
-- **Model**: GPT Realtime deployed on Microsoft Foundry
+- **Realtime model**: `gpt-realtime-1.5`
+- **Image model**: `gpt-image-2`
+- **Realtime gateway**: LiteLLM Proxy on the internal port `4000`
+- **Image edits**: LiteLLM Python SDK against the configured image endpoint
 - **Transcription**: Whisper-1
 
 ## Troubleshooting
 
 ### Connection Issues
 - Verify that the `.env` file contains correct credentials
-- Check that Microsoft Foundry endpoint is accessible
-- Ensure the model name matches your deployment
+- Check that the LiteLLM Proxy is running on port `4000`
+- Ensure the Azure deployment names match `MODEL_NAME` and `MODEL_IMAGE_NAME`
 
 ### Audio Processing Errors
 - Verify audio format is PCM16 at 24kHz

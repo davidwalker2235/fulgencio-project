@@ -1,5 +1,7 @@
 venv/
+.venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -12,5 +14,6 @@ build/
 .env
 .git/
 .gitignore
+proxy-test.*.log
 
 

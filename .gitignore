@@ -179,7 +179,6 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
-terraform/.terraform.lock.hcl
 terraform/crash.log
 terraform/crash.*.log
 

@@ -9,10 +9,16 @@ acr_name            = "fulgencioacr"  # Debe ser único globalmente, solo minús
 # Azure OpenAI Configuration
 # IMPORTANTE: Reemplaza estos valores con los de tu archivo .env o back/.env
 # NO subas este archivo con credenciales reales a GitHub
-azure_openai_endpoint = "https://tu-recurso.cognitiveservices.azure.com"
-azure_openai_api_key  = "tu_api_key_aqui"
-azure_openai_api_version = "2024-10-01-preview"
-model_name           = "gpt-realtime"
+azure_openai_endpoint             = "https://tu-proxy-openai-compatible.example.com"
+azure_openai_api_key              = "sk-tu_api_key_aqui"
+azure_openai_api_version          = "2024-10-01-preview"
+model_name                        = "gpt-realtime-1.5"
+model_image_name                  = "gpt-image-2"
+azure_openai_image_api_key        = "sk-tu_api_key_de_imagen"
+azure_openai_image_api_version    = "2025-04-01-preview"
+azure_openai_image_endpoint       = "https://tu-proxy-openai-compatible.example.com/images/generations"
+azure_openai_image_edits_endpoint = "https://tu-proxy-openai-compatible.example.com/images/edits"
+litellm_master_key                = "sk-cambia-esta-clave-interna"
 
 # CORS - Se actualizará automáticamente con el FQDN del frontend después del primer despliegue
 cors_origins = "https://fulgencio-frontend.*.azurecontainerapps.io"

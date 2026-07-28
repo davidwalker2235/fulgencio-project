@@ -71,15 +71,22 @@ resource "azurerm_user_assigned_identity" "main" {
 # az role assignment create --assignee <identity-principal-id> --role AcrPull --scope <acr-id>
 # IMPORTANTE: Este role assignment debe crearse ANTES de que los Container Apps intenten usar las imágenes
 resource "azurerm_role_assignment" "acr_pull" {
-  scope                = azurerm_container_registry.main.id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_user_assigned_identity.main.principal_id
-  
+  scope                            = azurerm_container_registry.main.id
+  role_definition_name             = "AcrPull"
+  principal_id                     = azurerm_user_assigned_identity.main.principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+
   # Asegurar que el role assignment se cree antes de los Container Apps
   depends_on = [
     azurerm_user_assigned_identity.main,
     azurerm_container_registry.main
   ]
+}
+
+resource "time_sleep" "acr_role_propagation" {
+  depends_on      = [azurerm_role_assignment.acr_pull]
+  create_duration = "45s"
 }
 
 # Container App - Backend
@@ -93,10 +100,10 @@ resource "azurerm_container_app" "backend" {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.main.id]
   }
-  
+
   # Asegurar que el role assignment existe antes de crear el Container App
   depends_on = [
-    azurerm_role_assignment.acr_pull
+    time_sleep.acr_role_propagation
   ]
 
   template {
@@ -130,6 +137,21 @@ resource "azurerm_container_app" "backend" {
       }
 
       env {
+        name  = "LITELLM_PROXY_HTTP_URL"
+        value = "http://localhost:4000"
+      }
+
+      env {
+        name  = "LITELLM_PROXY_WS_URL"
+        value = "ws://localhost:4000"
+      }
+
+      env {
+        name        = "LITELLM_PROXY_API_KEY"
+        secret_name = "litellm-master-key"
+      }
+
+      env {
         name  = "CORS_ORIGINS"
         value = var.cors_origins
       }
@@ -139,9 +161,17 @@ resource "azurerm_container_app" "backend" {
         value = var.voice_agent_type
       }
 
+      dynamic "env" {
+        for_each = var.voice_agent_type == "erni_agent" ? toset(["enabled"]) : toset([])
+        content {
+          name        = "ERNI_AGENT_URL"
+          secret_name = "erni-agent-url"
+        }
+      }
+
       env {
-        name        = "ERNI_AGENT_URL"
-        secret_name = "erni-agent-url"
+        name        = "AZURE_OPENAI_IMAGE_API_KEY"
+        secret_name = "azure-openai-image-api-key"
       }
 
       env {
@@ -161,12 +191,12 @@ resource "azurerm_container_app" "backend" {
 
       env {
         name  = "AZURE_OPENAI_IMAGE_ENDPOINT"
-        value = var.azure_openai_image_endpoint != "" ? var.azure_openai_image_endpoint : "${trimspace(trim(var.azure_openai_endpoint, "/"))}/openai/deployments/${var.model_image_name}/images/generations"
+        value = var.azure_openai_image_endpoint != "" ? var.azure_openai_image_endpoint : "${trimspace(trim(var.azure_openai_endpoint, "/"))}/images/generations"
       }
 
       env {
         name  = "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT"
-        value = var.azure_openai_image_edits_endpoint != "" ? var.azure_openai_image_edits_endpoint : "${trimspace(trim(var.azure_openai_endpoint, "/"))}/openai/deployments/${var.model_image_name}/images/edits"
+        value = var.azure_openai_image_edits_endpoint
       }
 
       env {
@@ -203,6 +233,100 @@ resource "azurerm_container_app" "backend" {
         name  = "AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS"
         value = var.azure_sql_connect_max_total_seconds
       }
+
+      startup_probe {
+        transport               = "HTTP"
+        port                    = 8000
+        path                    = "/health"
+        interval_seconds        = 5
+        timeout                 = 2
+        failure_count_threshold = 30
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        port                    = 8000
+        path                    = "/health"
+        interval_seconds        = 10
+        timeout                 = 3
+        failure_count_threshold = 6
+      }
+
+      liveness_probe {
+        transport               = "HTTP"
+        port                    = 8000
+        path                    = "/health"
+        initial_delay           = 20
+        interval_seconds        = 20
+        timeout                 = 3
+        failure_count_threshold = 3
+      }
+    }
+
+    container {
+      name    = "litellm"
+      image   = "${azurerm_container_registry.main.login_server}/backend:${var.backend_image_tag}"
+      command = ["python", "/app/run_litellm_proxy.py"]
+      cpu     = 0.5
+      memory  = "1.0Gi"
+
+      env {
+        name  = "AZURE_OPENAI_ENDPOINT"
+        value = var.azure_openai_endpoint
+      }
+
+      env {
+        name        = "AZURE_OPENAI_API_KEY"
+        secret_name = "azure-openai-api-key"
+      }
+
+      env {
+        name  = "AZURE_OPENAI_API_VERSION"
+        value = var.azure_openai_api_version
+      }
+
+      env {
+        name        = "LITELLM_MASTER_KEY"
+        secret_name = "litellm-master-key"
+      }
+
+      env {
+        name  = "LITELLM_HOST"
+        value = "0.0.0.0"
+      }
+
+      env {
+        name  = "LITELLM_PORT"
+        value = "4000"
+      }
+
+      startup_probe {
+        transport               = "HTTP"
+        port                    = 4000
+        path                    = "/health/liveliness"
+        interval_seconds        = 5
+        timeout                 = 3
+        failure_count_threshold = 30
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        port                    = 4000
+        path                    = "/health/liveliness"
+        interval_seconds        = 10
+        timeout                 = 3
+        failure_count_threshold = 6
+      }
+
+      liveness_probe {
+        transport               = "HTTP"
+        port                    = 4000
+        path                    = "/health/liveliness"
+        initial_delay           = 30
+        interval_seconds        = 20
+        timeout                 = 3
+        failure_count_threshold = 3
+      }
     }
   }
 
@@ -212,9 +336,9 @@ resource "azurerm_container_app" "backend" {
   }
 
   ingress {
-    external_enabled = true
-    target_port      = 8000
-    transport        = "auto"
+    external_enabled           = true
+    target_port                = 8000
+    transport                  = "auto"
     allow_insecure_connections = false
     traffic_weight {
       latest_revision = true
@@ -228,8 +352,21 @@ resource "azurerm_container_app" "backend" {
   }
 
   secret {
-    name  = "erni-agent-url"
-    value = var.erni_agent_url
+    name  = "azure-openai-image-api-key"
+    value = var.azure_openai_image_api_key
+  }
+
+  secret {
+    name  = "litellm-master-key"
+    value = var.litellm_master_key
+  }
+
+  dynamic "secret" {
+    for_each = var.voice_agent_type == "erni_agent" ? toset(["enabled"]) : toset([])
+    content {
+      name  = "erni-agent-url"
+      value = var.erni_agent_url
+    }
   }
 
   secret {
@@ -256,10 +393,10 @@ resource "azurerm_container_app" "frontend" {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.main.id]
   }
-  
+
   # Asegurar que el role assignment existe antes de crear el Container App
   depends_on = [
-    azurerm_role_assignment.acr_pull
+    time_sleep.acr_role_propagation
   ]
 
   template {
@@ -291,6 +428,34 @@ resource "azurerm_container_app" "frontend" {
         name  = "NEXT_PUBLIC_WS_URL"
         value = "wss://${azurerm_container_app.backend.ingress[0].fqdn}/ws"
       }
+
+      startup_probe {
+        transport               = "HTTP"
+        port                    = 3000
+        path                    = "/"
+        interval_seconds        = 5
+        timeout                 = 3
+        failure_count_threshold = 30
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        port                    = 3000
+        path                    = "/"
+        interval_seconds        = 10
+        timeout                 = 3
+        failure_count_threshold = 6
+      }
+
+      liveness_probe {
+        transport               = "HTTP"
+        port                    = 3000
+        path                    = "/"
+        initial_delay           = 15
+        interval_seconds        = 20
+        timeout                 = 3
+        failure_count_threshold = 3
+      }
     }
   }
 
@@ -300,9 +465,9 @@ resource "azurerm_container_app" "frontend" {
   }
 
   ingress {
-    external_enabled = true
-    target_port      = 3000
-    transport        = "auto"
+    external_enabled           = true
+    target_port                = 3000
+    transport                  = "auto"
     allow_insecure_connections = false
     traffic_weight {
       latest_revision = true

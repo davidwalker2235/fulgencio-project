@@ -37,12 +37,12 @@ cd back
 
 2. Create a virtual environment:
 ```bash
-python -m venv venv
+python -m venv .venv
 ```
 
 3. Activate the virtual environment:
-- Windows: `venv\Scripts\activate`
-- Linux/Mac: `source venv/bin/activate`
+- Windows: `.venv\Scripts\activate`
+- Linux/Mac: `source .venv/bin/activate`
 
 4. Install dependencies:
 ```bash
@@ -52,10 +52,9 @@ pip install -r requirements.txt
 5. Configure environment variables:
 - Create a `.env` file in the `back` folder with the following content:
 ```
-AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com
-AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_API_VERSION=2024-10-01-preview
-MODEL_NAME=gpt-realtime
+MODEL_NAME=gpt-realtime-1.5
+MODEL_IMAGE_NAME=gpt-image-2
+LITELLM_MASTER_KEY=sk-your-internal-proxy-key
 ```
 
 6. Run the server:
@@ -162,7 +161,8 @@ The application includes a complete authentication system:
 
 ## Technical Details
 
-- The project uses the `gpt-realtime` model deployed on Microsoft Foundry.
+- Realtime uses LiteLLM Proxy with `gpt-realtime-1.5`.
+- Image edits use the LiteLLM Python SDK with `gpt-image-2`.
 - Audio is processed in PCM16 format at 24kHz.
 - Transcription is performed using Whisper-1.
 - Authentication credentials are stored in Firebase Realtime Database.

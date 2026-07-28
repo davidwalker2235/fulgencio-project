@@ -2,6 +2,7 @@ import asyncio
 import base64
 import contextlib
 import datetime
+import io
 import json
 import os
 import random
@@ -9,19 +10,20 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from enum import Enum
 from typing import Any, Optional
 
 import firebase_admin
+import litellm
 import pyodbc
-import requests
 import websockets
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import credentials, db
-from openai import AzureOpenAI
+from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from pydantic import BaseModel
 
 load_dotenv()
@@ -57,10 +59,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-01-preview")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-realtime")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-realtime-1.5")
+
+LITELLM_PROXY_HTTP_URL = os.getenv(
+    "LITELLM_PROXY_HTTP_URL",
+    "http://localhost:4000",
+).rstrip("/")
+LITELLM_PROXY_WS_URL = os.getenv(
+    "LITELLM_PROXY_WS_URL",
+    "ws://localhost:4000",
+).rstrip("/")
+LITELLM_PROXY_API_KEY = os.getenv(
+    "LITELLM_PROXY_API_KEY",
+    os.getenv("LITELLM_MASTER_KEY", ""),
+)
 
 ERNI_AGENT_URL = os.getenv("ERNI_AGENT_URL", "wss://erni_voice_agent_user:74jxGh-J2a41CxZ_pQ2@robot-agent.enricd.com/ws")
 VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
@@ -77,33 +89,22 @@ AZURE_SQL_CONNECT_RETRY_BASE_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_RETRY_
 AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS", "45"))
 
 # Configuración de generación de imágenes (caricaturas)
-MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-1.5")
+MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-2")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_IMAGE_API_KEY = os.getenv("AZURE_OPENAI_IMAGE_API_KEY", "")
+AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
+    "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT",
+    f"{AZURE_OPENAI_ENDPOINT}/images/edits" if AZURE_OPENAI_ENDPOINT else "",
+)
 AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
     "AZURE_OPENAI_IMAGE_API_VERSION",
-    os.getenv("AZURE_OPENAI_IMAGE_API_KEY", "2024-02-01"),
+    "2025-04-01-preview",
 )
 AZURE_OPENAI_IMAGE_PROMPT = os.getenv(
     "AZURE_OPENAI_IMAGE_PROMPT",
     "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the lines to be thin and the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible."
 )
-AZURE_OPENAI_IMAGE_ENDPOINT = os.getenv(
-    "AZURE_OPENAI_IMAGE_ENDPOINT",
-    (
-        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{MODEL_IMAGE_NAME}/images/generations"
-        if AZURE_OPENAI_ENDPOINT
-        else ""
-    ),
-)
-AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
-    "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT",
-    (
-        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{MODEL_IMAGE_NAME}/images/edits"
-        if AZURE_OPENAI_ENDPOINT
-        else ""
-    ),
-)
-
-client: Optional[AzureOpenAI] = None
 firebase_app: Optional[firebase_admin.App] = None
 status_listener_started = False
 current_status = "idle"
@@ -113,12 +114,51 @@ active_websockets: set[WebSocket] = set()
 active_websockets_lock = threading.Lock()
 main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 
-if AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY:
-    client = AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    )
+def is_litellm_configured() -> bool:
+    """Indica si el backend puede autenticarse contra el Proxy LiteLLM."""
+    return bool(LITELLM_PROXY_HTTP_URL and LITELLM_PROXY_API_KEY)
+
+
+def get_image_api_base() -> str:
+    """Convierte el endpoint completo de edits en el api_base esperado por LiteLLM."""
+    endpoint = AZURE_OPENAI_IMAGE_EDITS_ENDPOINT or AZURE_OPENAI_ENDPOINT
+    if not endpoint:
+        return ""
+
+    parts = urllib.parse.urlsplit(endpoint)
+    path = parts.path.rstrip("/")
+    if path.endswith("/images/edits"):
+        path = path[: -len("/images/edits")]
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, path, "", "")
+    ).rstrip("/")
+
+
+def get_image_api_key() -> str:
+    """Usa la clave del Proxy upstream cuando comparte host con el endpoint general."""
+    image_host = urllib.parse.urlsplit(AZURE_OPENAI_IMAGE_EDITS_ENDPOINT).hostname
+    main_host = urllib.parse.urlsplit(AZURE_OPENAI_ENDPOINT).hostname
+    if image_host and image_host == main_host and AZURE_OPENAI_API_KEY:
+        return AZURE_OPENAI_API_KEY
+    return AZURE_OPENAI_IMAGE_API_KEY or AZURE_OPENAI_API_KEY
+
+
+def is_image_litellm_configured() -> bool:
+    return bool(get_image_api_base() and get_image_api_key() and MODEL_IMAGE_NAME)
+
+
+class ImageAPIQueryHTTPHandler(HTTPHandler):
+    """Añade api-version, que LiteLLM 1.86.0 no propaga en image_edit."""
+
+    def __init__(self, api_version: str):
+        super().__init__()
+        self.api_version = api_version
+
+    def post(self, url: str, **kwargs):
+        params = dict(kwargs.pop("params", None) or {})
+        if self.api_version:
+            params.setdefault("api-version", self.api_version)
+        return super().post(url=url, params=params, **kwargs)
 
 
 def _sanitize_service_account_json(raw_json: str) -> str:
@@ -504,57 +544,30 @@ def extract_base64_payload(image_data: str) -> str:
     return image_data.strip()
 
 
-def parse_generated_base64_list(response_data: dict[str, Any]) -> list[str]:
-    """
-    Extrae una lista de base64 desde posibles formatos de respuesta del endpoint images.
-    """
+def parse_generated_base64_list(response: Any) -> list[str]:
+    """Extrae y deduplica los ``b64_json`` de una respuesta LiteLLM."""
+    data = getattr(response, "data", None)
+    if data is None and isinstance(response, dict):
+        data = response.get("data")
+
     results: list[str] = []
-
-    data = response_data.get("data")
-    if isinstance(data, list) and data:
+    if isinstance(data, list):
         for item in data:
-            if not isinstance(item, dict):
-                continue
-            b64_json = item.get("b64_json")
+            b64_json = getattr(item, "b64_json", None)
+            if b64_json is None and isinstance(item, dict):
+                b64_json = item.get("b64_json")
             if isinstance(b64_json, str) and b64_json.strip():
                 results.append(b64_json.strip())
 
-    output = response_data.get("output")
-    if isinstance(output, list) and output:
-        for item in output:
-            if not isinstance(item, dict):
-                continue
-            b64_json = item.get("b64_json")
-            if isinstance(b64_json, str) and b64_json.strip():
-                results.append(b64_json.strip())
-            content = item.get("content")
-            if isinstance(content, list):
-                for piece in content:
-                    if isinstance(piece, dict):
-                        b64_piece = piece.get("b64_json")
-                        if isinstance(b64_piece, str) and b64_piece.strip():
-                            results.append(b64_piece.strip())
-
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for entry in results:
-        if entry in seen:
-            continue
-        seen.add(entry)
-        deduped.append(entry)
-
-    return deduped
+    return list(dict.fromkeys(results))
 
 
 def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     """
-    Edita imagen usando gpt-image-1.5 en endpoint /images/edits
-    enviando multipart/form-data (image + prompt).
+    Edita una imagen mediante LiteLLM SDK contra el endpoint OpenAI-compatible.
     """
-    if not AZURE_OPENAI_IMAGE_EDITS_ENDPOINT:
-        raise RuntimeError("AZURE_OPENAI_IMAGE_EDITS_ENDPOINT no configurado")
-    if not AZURE_OPENAI_API_KEY:
-        raise RuntimeError("AZURE_OPENAI_API_KEY no configurado")
+    if not is_image_litellm_configured():
+        raise RuntimeError("LiteLLM para imágenes no está configurado")
 
     raw_base64 = extract_base64_payload(photo_base64_or_data_url)
     if not raw_base64:
@@ -565,47 +578,30 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     except Exception as err:
         raise RuntimeError(f"Base64 de foto inválido: {err}") from err
 
-    files = {
-        "image": ("image_to_edit.jpg", image_bytes, "image/jpeg"),
-    }
-    data = {
-        "prompt": AZURE_OPENAI_IMAGE_PROMPT,
-        "n": "1",
-    }
-    headers = {
-        "Authorization": f"Bearer {AZURE_OPENAI_API_KEY}",
-    }
+    image_file = io.BytesIO(image_bytes)
+    image_file.name = "image_to_edit.jpg"
 
-    version = AZURE_OPENAI_IMAGE_API_VERSION
-    request_url = f"{AZURE_OPENAI_IMAGE_EDITS_ENDPOINT}?api-version={version}"
-    print(f"🖼️ Edit endpoint: {request_url}")
-    response = requests.post(
-        request_url,
-        headers=headers,
-        files=files,
-        data=data,
-        timeout=90,
-    )
-    print(f"🖼️ Status Foundry edits: {response.status_code}")
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"HTTP {response.status_code} {response.reason} "
-            f"(api-version={version}). Body: {response.text}"
+    image_http_client = ImageAPIQueryHTTPHandler(AZURE_OPENAI_IMAGE_API_VERSION)
+    try:
+        response = litellm.image_edit(
+            model=f"openai/{MODEL_IMAGE_NAME}",
+            image=image_file,
+            prompt=AZURE_OPENAI_IMAGE_PROMPT,
+            n=1,
+            api_base=get_image_api_base(),
+            api_key=get_image_api_key(),
+            client=image_http_client,
+            timeout=90,
         )
+    finally:
+        image_http_client.close()
 
-    response_data = response.json()
-    generated_base64_list = parse_generated_base64_list(response_data)
+    generated_base64_list = parse_generated_base64_list(response)
     if generated_base64_list:
-        print(
-            f"✅ Caricaturas generadas correctamente (api-version={version}). "
-            f"Cantidad: {len(generated_base64_list)}"
-        )
+        print(f"Caricaturas generadas correctamente. Cantidad: {len(generated_base64_list)}")
         return generated_base64_list
 
-    raise RuntimeError(
-        f"200 sin b64_json (api-version={version}). Body: {response.text}"
-    )
+    raise RuntimeError("LiteLLM devolvió una respuesta de imagen sin b64_json")
 
 
 class RegisterUserRequest(BaseModel):
@@ -647,20 +643,14 @@ async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) ->
     """
     Usa GPT Realtime en modo texto para resumir solo los mensajes de usuario.
     """
-    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
-        raise RuntimeError("Azure OpenAI no configurado para resumen")
+    if not is_litellm_configured():
+        raise RuntimeError("LiteLLM Proxy no configurado para resumen")
 
-    endpoint_base = AZURE_OPENAI_ENDPOINT.rstrip("/")
-    if endpoint_base.startswith("https://"):
-        endpoint_base = endpoint_base.replace("https://", "wss://")
-    elif endpoint_base.startswith("http://"):
-        endpoint_base = endpoint_base.replace("http://", "ws://")
-
-    headers = {"api-key": AZURE_OPENAI_API_KEY}
-    realtime_url = (
-        f"{endpoint_base}/openai/realtime?deployment={MODEL_NAME}"
-        f"&api-version={AZURE_OPENAI_API_VERSION}"
-    )
+    headers = {
+        "Authorization": f"Bearer {LITELLM_PROXY_API_KEY}",
+        "OpenAI-Beta": "realtime=v1",
+    }
+    realtime_url = f"{LITELLM_PROXY_WS_URL}/v1/realtime?model={MODEL_NAME}"
 
     summary_prompt = (
         "Eres un asistente que resume conversaciones.\n"
@@ -744,15 +734,7 @@ async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) ->
                 return joined
             raise RuntimeError("No se recibió texto de resumen desde GPT Realtime")
 
-    try:
-        return await run_with_url(realtime_url)
-    except Exception as first_err:
-        print(f"⚠️ Fallo resumen con deployment, reintentando con model: {first_err}")
-        realtime_url_model = (
-            f"{endpoint_base}/openai/realtime?model={MODEL_NAME}"
-            f"&api-version={AZURE_OPENAI_API_VERSION}"
-        )
-        return await run_with_url(realtime_url_model)
+    return await run_with_url(realtime_url)
 
 
 @app.on_event("startup")
@@ -774,7 +756,7 @@ async def root():
         "message": "GPT Realtime Voice API está funcionando",
         "model": MODEL_NAME,
         "voice_agent": VOICE_AGENT_TYPE.value,
-        "configured": client is not None if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT else True,
+        "configured": is_litellm_configured() if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT else True,
     }
 
 
@@ -783,8 +765,8 @@ async def health():
     """Endpoint de salud detallado"""
     return {
         "status": "healthy",
-        "endpoint_configured": bool(AZURE_OPENAI_ENDPOINT),
-        "api_key_configured": bool(AZURE_OPENAI_API_KEY),
+        "litellm_proxy_configured": is_litellm_configured(),
+        "image_model_configured": is_image_litellm_configured(),
     }
 
 
@@ -857,7 +839,7 @@ async def register_user(payload: RegisterUserRequest):
 @app.post("/photo/generate-caricature")
 async def generate_caricature(payload: CaricatureGenerationRequest):
     """
-    Genera una caricatura desde la foto con gpt-image-1.5 y la guarda en Azure SQL
+    Genera una caricatura desde la foto con gpt-image-2 y la guarda en Azure SQL
     (un solo valor base64, no array).
     """
     order_number = payload.orderNumber.strip()
@@ -910,7 +892,7 @@ async def generate_caricature(payload: CaricatureGenerationRequest):
 async def websocket_endpoint(websocket: WebSocket):
     """
     Endpoint WebSocket para manejar la conversación de voz en tiempo real.
-    Según VOICE_AGENT_TYPE, conecta con Erni Agent o Azure OpenAI Realtime.
+    Según VOICE_AGENT_TYPE, conecta con Erni Agent o LiteLLM Realtime.
     """
     await websocket.accept()
 
@@ -956,8 +938,8 @@ async def handle_erni_agent(websocket: WebSocket):
 
 
 async def handle_azure_agent(websocket: WebSocket):
-    """Maneja la conexión con Azure OpenAI Realtime"""
-    if not client:
+    """Maneja la conexión con GPT Realtime a través de LiteLLM."""
+    if not is_litellm_configured():
         await websocket.send_json({
             "type": "error",
             "message": "Azure OpenAI no está configurado. Verifica las variables de entorno."
@@ -966,35 +948,19 @@ async def handle_azure_agent(websocket: WebSocket):
         return
 
     try:
-        endpoint_base = AZURE_OPENAI_ENDPOINT.rstrip('/')
-        if endpoint_base.startswith('https://'):
-            endpoint_base = endpoint_base.replace('https://', 'wss://')
-        elif endpoint_base.startswith('http://'):
-            endpoint_base = endpoint_base.replace('http://', 'ws://')
-        
-        realtime_url = f"{endpoint_base}/openai/realtime?deployment={MODEL_NAME}&api-version={AZURE_OPENAI_API_VERSION}"
-        
-        print(f"Intentando conectar a: {realtime_url.replace(AZURE_OPENAI_API_KEY, '***')}")
-        
+        realtime_url = f"{LITELLM_PROXY_WS_URL}/v1/realtime?model={MODEL_NAME}"
+        print(f"Conectando a LiteLLM Realtime: {realtime_url}")
+
         headers = {
-            "api-key": AZURE_OPENAI_API_KEY,
+            "Authorization": f"Bearer {LITELLM_PROXY_API_KEY}",
+            "OpenAI-Beta": "realtime=v1",
         }
 
-        try:
-            async with websockets.connect(
-                realtime_url,
-                additional_headers=headers,
-            ) as realtime_ws:
-                await handle_realtime_connection(realtime_ws, websocket)
-        except Exception as e:
-            print(f"Error con 'deployment', intentando con 'model': {e}")
-            realtime_url = f"{endpoint_base}/openai/realtime?model={MODEL_NAME}&api-version={AZURE_OPENAI_API_VERSION}"
-            print(f"Intentando conectar a: {realtime_url}")
-            async with websockets.connect(
-                realtime_url,
-                additional_headers=headers,
-            ) as realtime_ws:
-                await handle_realtime_connection(realtime_ws, websocket)
+        async with websockets.connect(
+            realtime_url,
+            additional_headers=headers,
+        ) as realtime_ws:
+            await handle_realtime_connection(realtime_ws, websocket)
     
     except Exception as e:
         print(f"Error general en WebSocket: {e}")

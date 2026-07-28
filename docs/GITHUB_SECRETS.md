@@ -1,58 +1,60 @@
-# Secrets y variables para GitHub Actions
+# Secrets y variables de GitHub Actions
 
-Configura estos secrets en el repositorio para que el despliegue a Azure funcione correctamente.
+Configúralos en `Settings → Secrets and variables → Actions`.
 
-**Dónde añadirlos:** Repositorio → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+## Secrets obligatorios
 
----
+| Secret | Valor |
+|---|---|
+| `AZURE_CREDENTIALS` | JSON del Service Principal con `clientId`, `clientSecret`, `subscriptionId` y `tenantId`. |
+| `AZURE_OPENAI_ENDPOINT` | El valor de `back/.env` con ese nombre. Debe ser la URL base HTTPS del endpoint OpenAI-compatible. |
+| `AZURE_OPENAI_API_KEY` | El valor de `back/.env`. |
+| `AZURE_OPENAI_API_VERSION` | El valor de `back/.env`. |
+| `AZURE_OPENAI_IMAGE_API_VERSION` | `2025-04-01-preview`, o el valor vigente de `back/.env`. |
+| `AZURE_OPENAI_IMAGE_API_KEY` | Clave del endpoint de imagen. Si comparte credenciales con el endpoint general, usa el mismo valor que `AZURE_OPENAI_API_KEY`. No pongas aquí la versión de API. |
+| `AZURE_OPENAI_IMAGE_EDITS_ENDPOINT` | El endpoint completo de edición; en el entorno actual termina en `/images/edits`. |
+| `LITELLM_MASTER_KEY` | Clave interna nueva, distinta de las claves upstream. Debe comenzar por `sk-` y tener al menos 16 caracteres. |
+| `FIREBASE_DATABASE_URL` | URL de Firebase Realtime Database. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | JSON completo y en una sola línea del Service Account de Firebase Admin. |
+| `AZURE_SQL_CONNECTION_STRING` | Cadena de conexión completa de Azure SQL. |
+| `FIREBASE_API_KEY` | Configuración pública de Firebase para el frontend. |
+| `FIREBASE_AUTH_DOMAIN` | Configuración pública de Firebase para el frontend. |
+| `FIREBASE_PROJECT_ID` | Configuración pública de Firebase para el frontend. |
+| `FIREBASE_STORAGE_BUCKET` | Configuración pública de Firebase para el frontend. |
+| `FIREBASE_MESSAGING_SENDER_ID` | Configuración pública de Firebase para el frontend. |
+| `FIREBASE_APP_ID` | Configuración pública de Firebase para el frontend. |
 
-## Secrets obligatorios (ya existentes)
+Si la variable `VOICE_AGENT_TYPE` vale `erni_agent`, también es obligatorio:
 
-| Secret | Descripción | Usado en |
-|--------|-------------|----------|
-| `AZURE_CREDENTIALS` | JSON con credenciales del Service Principal de Azure (subscriptionId, clientId, clientSecret, tenantId) | Login en Azure |
-| `AZURE_OPENAI_ENDPOINT` | URL del endpoint de Azure OpenAI (ej. `https://xxx.cognitiveservices.azure.com`) | Backend (Terraform) |
-| `AZURE_OPENAI_API_KEY` | API Key de Azure OpenAI | Backend (Terraform) |
-| `AZURE_OPENAI_API_VERSION` | Versión de la API (ej. `2024-10-01-preview`) | Backend (Terraform) |
-| `MODEL_NAME` | Nombre del modelo (ej. `gpt-realtime`) | Backend (Terraform) |
-| `FIREBASE_DATABASE_URL` | URL de Firebase Realtime Database (ej. `https://xxx-default-rtdb.europe-west1.firebasedatabase.app`) | Frontend (build) y **Backend (Terraform)** |
-| `FIREBASE_API_KEY` | API Key de Firebase | Frontend (build) |
-| `FIREBASE_AUTH_DOMAIN` | Auth domain de Firebase | Frontend (build) |
-| `FIREBASE_PROJECT_ID` | Project ID de Firebase | Frontend (build) |
-| `FIREBASE_STORAGE_BUCKET` | Storage bucket de Firebase | Frontend (build) |
-| `FIREBASE_MESSAGING_SENDER_ID` | Messaging Sender ID | Frontend (build) |
-| `FIREBASE_APP_ID` | App ID de Firebase | Frontend (build) |
-| `FIREBASE_MEASUREMENT_ID` | Measurement ID (analytics) | Frontend (build) |
+| Secret | Valor |
+|---|---|
+| `ERNI_AGENT_URL` | URL WebSocket completa del agente Erni, incluidas sus credenciales. |
 
----
+## Secrets opcionales
 
-## Secret nuevo a añadir (backend: voz y caricaturas)
+| Secret | Uso |
+|---|---|
+| `AZURE_OPENAI_IMAGE_ENDPOINT` | Endpoint de generación (`/images/generations`). La edición usa el secret obligatorio de edits. |
+| `FIREBASE_MEASUREMENT_ID` | Firebase Analytics del frontend. |
 
-| Secret | Descripción | Obligatorio |
-|--------|-------------|-------------|
-| **`ERNI_AGENT_URL`** | URL completa del WebSocket de Erni Agent, incluyendo usuario y contraseña. Ejemplo: `wss://user:password@robot-agent.enricd.com/ws` | **Sí**, si usas `voice_agent_type=erni_agent`. Si solo usas Azure, puedes dejarlo vacío (no se inyectará en el backend). |
+## Variables de GitHub
 
----
+| Variable | Valor |
+|---|---|
+| `VOICE_AGENT_TYPE` | `erni_agent` o `azure_agent`. Si no existe, el workflow usa `erni_agent`. |
 
-## Resumen: qué añadir ahora
+Los modelos se fijan en el workflow:
 
-1. **`ERNI_AGENT_URL`**  
-   - Valor: la misma URL que tienes en `back/.env` como `ERNI_AGENT_URL` (con user y password en la URL).  
-   - Si en producción solo usas `azure_agent`, puedes crear el secret con un valor vacío o no crearlo; Terraform no inyectará la variable en ese caso.
+- Realtime: `gpt-realtime-1.5`
+- Imagen: `gpt-image-2`
 
-2. **`FIREBASE_DATABASE_URL`**  
-   - Si ya lo tienes para el build del frontend, no hace falta duplicarlo: el mismo secret se usa ahora también para Terraform (backend).  
-   - Si no lo tenías, añádelo para que el backend pueda guardar las caricaturas en Firebase.
+No son necesarios los secrets `MODEL_NAME` ni `MODEL_IMAGE_NAME`.
 
----
+## Permisos de Azure
 
-## Variables con valor por defecto en Terraform (opcional)
+El Service Principal de `AZURE_CREDENTIALS` necesita:
 
-Estas tienen default en Terraform; solo crea **variables** en GitHub (Settings → Variables) si quieres override en CI:
+- `Contributor` para crear y actualizar los recursos.
+- `User Access Administrator` u `Owner` para crear la asignación `AcrPull`.
 
-- `VOICE_AGENT_TYPE` → default `erni_agent`
-- `MODEL_IMAGE_NAME` → default `gpt-image-1.5`
-- `AZURE_OPENAI_IMAGE_API_VERSION` → default `2025-04-01-preview`
-- `AZURE_OPENAI_IMAGE_PROMPT` → default (texto del prompt de caricatura)
-
-No es necesario crear secrets/variables para estas si los valores por defecto te valen.
+El workflow crea automáticamente un Resource Group y una cuenta de Storage separados para el estado remoto de Terraform. No requiere un secret adicional.
