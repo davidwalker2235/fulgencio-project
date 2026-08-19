@@ -186,7 +186,7 @@ variable "azure_openai_image_api_version" {
 variable "azure_openai_image_prompt" {
   description = "Prompt para generación de caricaturas"
   type        = string
-  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the lines to be thin and the details to be as minimalist as possible while preserving the exaggerated proportions."
+  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible. Avoid grey colors, all lines must be black. The background should be white and empty, with no additional elements or distractions. The final image should be a clean and simple line drawing that captures the essence of the caricature in a minimalist way. This picture will be drawn by a robot arm so the lines should be connected together avoiding unnecessary gaps."
 }
 
 variable "azure_openai_image_endpoint" {
