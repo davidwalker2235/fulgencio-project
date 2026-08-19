@@ -1,10 +1,6 @@
 const TARGET_API_URL =
   process.env.ROBOT_AGENT_NUMERIC_CODE_API_URL ??
-  "https://robot-agent.enricd.com/api/tools/draw_robot_caricature";
-const TARGET_API_AUTHORIZATION =
-  process.env.ROBOT_AGENT_API_AUTHORIZATION ??
-  "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmcm9udGVuZCJ9.t6chSAgaDIMVtC-AX0D_pQKWqnjk5piDLvgwZp9mhnE";
-
+  `${process.env.BACKEND_API_URL ?? (process.env.NODE_ENV === "production" ? "http://backend:8000" : "http://localhost:8000")}/robot/submit-number`;
 export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("user_id")?.trim();
@@ -18,14 +14,13 @@ export async function POST(request: Request) {
 
   try {
     const upstreamResponse = await fetch(
-      `${TARGET_API_URL}?user_id=${encodeURIComponent(userId)}`,
+      TARGET_API_URL,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: TARGET_API_AUTHORIZATION,
         },
-        body: "{}",
+        body: JSON.stringify({ user_id: userId }),
       },
     );
 

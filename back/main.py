@@ -82,6 +82,7 @@ VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
 # Configuración de Firebase
 FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
 FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv("FIREBASE_SERVICE_ACCOUNT_FILE", "")
 
 # Azure SQL (datos de users y caricatura)
 AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
@@ -190,13 +191,17 @@ def initialize_firebase_admin() -> None:
     if not FIREBASE_DATABASE_URL:
         print("⚠️ FIREBASE_DATABASE_URL no configurado; no se inicializa Firebase Admin.")
         return
-    if not FIREBASE_SERVICE_ACCOUNT_JSON:
-        print("⚠️ FIREBASE_SERVICE_ACCOUNT_JSON no configurado; no se inicializa Firebase Admin.")
+    if not FIREBASE_SERVICE_ACCOUNT_JSON and not FIREBASE_SERVICE_ACCOUNT_FILE:
+        print("⚠️ Credencial de Firebase Admin no configurada; no se inicializa Firebase Admin.")
         return
 
     try:
-        service_account_json = _sanitize_service_account_json(FIREBASE_SERVICE_ACCOUNT_JSON)
-        service_account_info = json.loads(service_account_json)
+        if FIREBASE_SERVICE_ACCOUNT_FILE:
+            with open(FIREBASE_SERVICE_ACCOUNT_FILE, "r", encoding="utf-8") as file:
+                service_account_info = json.load(file)
+        else:
+            service_account_json = _sanitize_service_account_json(FIREBASE_SERVICE_ACCOUNT_JSON)
+            service_account_info = json.loads(service_account_json)
         private_key = service_account_info.get("private_key")
         if isinstance(private_key, str):
             service_account_info["private_key"] = private_key.replace("\\n", "\n")
@@ -542,6 +547,39 @@ def update_user_caricature_azure_sql(order_number: str, caricature_base64: str) 
         return False
 
 
+def submit_user_number_to_firebase(user_id: str) -> dict[str, Any]:
+    """Busca un usuario en Azure SQL y publica su acción de dibujo en Firebase."""
+    if firebase_app is None:
+        raise RuntimeError("Firebase Admin no está inicializado")
+    try:
+        numeric_id = int(user_id.strip())
+    except (AttributeError, ValueError):
+        raise ValueError("user_id debe ser un número entero")
+    with get_azure_sql_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""SELECT id, full_name, email, [timestamp], real_name, work_name,
+                   request_id, caricature, caricature_timestamp FROM users WHERE id = ?;""", (numeric_id,))
+        row = cursor.fetchone()
+    if row is None:
+        raise LookupError("Usuario no encontrado")
+    fields = ("id", "full_name", "email", "timestamp", "real_name", "work_name", "request_id", "caricature", "caricature_timestamp")
+    user = dict(zip(fields, row))
+    def firebase_value(value: Any) -> Any:
+        if value is None: return ""
+        if isinstance(value, (datetime.datetime, datetime.date)): return value.isoformat()
+        if isinstance(value, bytes): return value.decode("utf-8")
+        return value
+    action = {
+        "caricatureImage": firebase_value(user["caricature"]),
+        "fullName": firebase_value(user["full_name"]),
+        "timestamp": int(time.time() * 1000),
+        "type": "draw_caricature",
+        "userId": numeric_id,
+    }
+    db.reference().update({"robot_action": action})
+    return action
+
+
 def extract_base64_payload(image_data: str) -> str:
     """
     Admite data URL o base64 directo y devuelve solo el payload base64.
@@ -625,6 +663,10 @@ class RegisterUserRequest(BaseModel):
 class CaricatureGenerationRequest(BaseModel):
     orderNumber: str
     photoBase64: str
+
+
+class NumericUserRequest(BaseModel):
+    user_id: str
 
 
 class SummaryMessage(BaseModel):
@@ -844,6 +886,21 @@ async def register_user(payload: RegisterUserRequest):
     except Exception as err:
         print(f"❌ Error registrando usuario en Azure SQL: {err}")
         raise HTTPException(status_code=500, detail=str(err))
+
+
+@app.post("/robot/submit-number")
+async def submit_number(payload: NumericUserRequest):
+    """Procesa números introducidos manualmente sin pasar por IA."""
+    try:
+        action = await asyncio.to_thread(submit_user_number_to_firebase, payload.user_id)
+        return {"ok": True, "robot_action": action}
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    except Exception as err:
+        print(f"Error procesando número manual: {err}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el número")
 
 
 @app.post("/photo/generate-caricature")
