@@ -31,6 +31,7 @@ env:
   TF_VAR_litellm_master_key: ${{ secrets.LITELLM_MASTER_KEY }}
   TF_VAR_voice_agent_type: ${{ vars.VOICE_AGENT_TYPE || 'erni_agent' }}
   TF_VAR_erni_agent_url: ${{ secrets.ERNI_AGENT_URL }}
+  TF_VAR_fulgencio_agent_url: ${{ secrets.FULGENCIO_AGENT_URL }}
 
   TF_VAR_model_image_name: gpt-image-2
   TF_VAR_azure_openai_image_api_key: ${{ secrets.AZURE_OPENAI_IMAGE_API_KEY }}
@@ -92,6 +93,10 @@ jobs:
 
           if [ "$TF_VAR_voice_agent_type" = "erni_agent" ] && [ -z "$TF_VAR_erni_agent_url" ]; then
             missing+=("TF_VAR_erni_agent_url")
+          fi
+
+          if [ "$TF_VAR_voice_agent_type" = "fulgencio_agent" ] && [ -z "$TF_VAR_fulgencio_agent_url" ]; then
+            missing+=("TF_VAR_fulgencio_agent_url")
           fi
 
           if [ "${TF_VAR_litellm_master_key#sk-}" = "$TF_VAR_litellm_master_key" ] ||

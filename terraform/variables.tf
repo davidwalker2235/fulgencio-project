@@ -133,11 +133,16 @@ variable "cors_origins" {
   default     = "https://fulgencio-frontend.*.azurecontainerapps.io"
 }
 
-# Voice agent (erni_agent | azure_agent)
+# Voice agent (erni_agent | fulgencio_agent | azure_agent)
 variable "voice_agent_type" {
-  description = "Tipo de agente de voz: erni_agent o azure_agent"
+  description = "Tipo de agente de voz: erni_agent, fulgencio_agent o azure_agent"
   type        = string
   default     = "erni_agent"
+
+  validation {
+    condition     = contains(["erni_agent", "fulgencio_agent", "azure_agent"], var.voice_agent_type)
+    error_message = "voice_agent_type debe ser erni_agent, fulgencio_agent o azure_agent."
+  }
 }
 
 variable "erni_agent_url" {
@@ -152,6 +157,13 @@ variable "model_image_name" {
   description = "Nombre del modelo de imagen Azure OpenAI"
   type        = string
   default     = "gpt-image-2"
+}
+
+variable "fulgencio_agent_url" {
+  description = "URL del WebSocket de Fulgencio Agent (incluye credenciales Basic Auth)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "azure_openai_image_api_key" {

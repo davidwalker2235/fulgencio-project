@@ -103,6 +103,32 @@ class TestLiteLLMAdapters(unittest.TestCase):
             {"Authorization": "Bearer proxy-key", "OpenAI-Beta": "realtime=v1"},
         )
 
+    def test_fulgencio_uses_generic_external_proxy(self):
+        websocket = SimpleNamespace(
+            send_json=AsyncMock(),
+            close=AsyncMock(),
+            client_state=SimpleNamespace(name="CONNECTED"),
+        )
+        external_socket = object()
+        main.FULGENCIO_AGENT_URL = "wss://user:pass@agent.example/ws"
+
+        async def run():
+            with patch.object(
+                main.websockets,
+                "connect",
+                return_value=_AsyncContext(external_socket),
+            ) as connect:
+                with patch.object(
+                    main, "handle_external_agent_connection", new=AsyncMock()
+                ) as proxy:
+                    await main.handle_fulgencio_agent(websocket)
+            return connect, proxy
+
+        connect, proxy = asyncio.run(run())
+        connect.assert_called_once_with(main.FULGENCIO_AGENT_URL)
+        proxy.assert_awaited_once_with(external_socket, websocket, "Fulgencio Agent")
+        self.assertEqual(main.VoiceAgent("fulgencio_agent"), main.VoiceAgent.FULGENCIO_AGENT)
+
 
 if __name__ == "__main__":
     unittest.main()

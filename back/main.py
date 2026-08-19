@@ -31,6 +31,7 @@ load_dotenv()
 
 class VoiceAgent(str, Enum):
     ERNI_AGENT = "erni_agent"
+    FULGENCIO_AGENT = "fulgencio_agent"
     AZURE_AGENT = "azure_agent"
 
 app = FastAPI(title="GPT Realtime Voice API")
@@ -75,6 +76,7 @@ LITELLM_PROXY_API_KEY = os.getenv(
 )
 
 ERNI_AGENT_URL = os.getenv("ERNI_AGENT_URL", "wss://erni_voice_agent_user:74jxGh-J2a41CxZ_pQ2@robot-agent.enricd.com/ws")
+FULGENCIO_AGENT_URL = os.getenv("FULGENCIO_AGENT_URL", "")
 VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
 
 # Configuración de Firebase
@@ -117,6 +119,14 @@ main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 def is_litellm_configured() -> bool:
     """Indica si el backend puede autenticarse contra el Proxy LiteLLM."""
     return bool(LITELLM_PROXY_HTTP_URL and LITELLM_PROXY_API_KEY)
+
+
+def is_voice_agent_configured() -> bool:
+    if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT:
+        return is_litellm_configured()
+    if VOICE_AGENT_TYPE == VoiceAgent.FULGENCIO_AGENT:
+        return bool(FULGENCIO_AGENT_URL)
+    return bool(ERNI_AGENT_URL)
 
 
 def get_image_api_base() -> str:
@@ -756,7 +766,7 @@ async def root():
         "message": "GPT Realtime Voice API está funcionando",
         "model": MODEL_NAME,
         "voice_agent": VOICE_AGENT_TYPE.value,
-        "configured": is_litellm_configured() if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT else True,
+        "configured": is_voice_agent_configured(),
     }
 
 
@@ -904,6 +914,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if VOICE_AGENT_TYPE == VoiceAgent.ERNI_AGENT:
             await handle_erni_agent(websocket)
+        elif VOICE_AGENT_TYPE == VoiceAgent.FULGENCIO_AGENT:
+            await handle_fulgencio_agent(websocket)
         else:
             await handle_azure_agent(websocket)
     finally:
@@ -912,20 +924,37 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def handle_erni_agent(websocket: WebSocket):
-    """Maneja la conexión con Erni Agent"""
+    """Conecta el frontend con el agente Erni externo."""
+    await handle_external_agent(websocket, ERNI_AGENT_URL, "Erni Agent")
+
+
+async def handle_fulgencio_agent(websocket: WebSocket):
+    """Conecta el frontend con el agente Fulgencio externo."""
+    await handle_external_agent(websocket, FULGENCIO_AGENT_URL, "Fulgencio Agent")
+
+
+async def handle_external_agent(websocket: WebSocket, url: str, label: str):
+    """Proxy genérico para agentes externos que implementan el protocolo Erni."""
+    if not url:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"{label} no está configurado."
+        })
+        await websocket.close()
+        return
     try:
-        print(f"Conectando a Erni Agent: {ERNI_AGENT_URL.split('@')[1] if '@' in ERNI_AGENT_URL else ERNI_AGENT_URL}")
-        
-        async with websockets.connect(ERNI_AGENT_URL) as erni_ws:
-            await handle_erni_connection(erni_ws, websocket)
+        parsed_url = urllib.parse.urlsplit(url)
+        print(f"Conectando a {label}: {parsed_url.hostname or 'host externo'}")
+        async with websockets.connect(url) as external_ws:
+            await handle_external_agent_connection(external_ws, websocket, label)
     
     except Exception as e:
-        print(f"Error en Erni Agent WebSocket: {e}")
+        print(f"Error en {label} WebSocket: {type(e).__name__}")
         try:
             if websocket.client_state.name != "DISCONNECTED":
                 await websocket.send_json({
                     "type": "error",
-                    "message": f"Error al conectar con Erni Agent: {str(e)}"
+                    "message": f"Error al conectar con {label}"
                 })
         except:
             pass
@@ -980,15 +1009,15 @@ async def handle_azure_agent(websocket: WebSocket):
             pass
 
 
-async def handle_erni_connection(erni_ws, websocket: WebSocket):
+async def handle_external_agent_connection(external_ws, websocket: WebSocket, label: str):
     """
-    Maneja la conexión con Erni Agent.
+    Maneja la conexión con un agente externo compatible.
     - Envía audio PCM binario directamente (16-bit, 16kHz, mono)
     - Recibe eventos JSON: stt_chunk, stt_output, agent_chunk, agent_end, tool_call, tool_result, tts_chunk
     """
     
-    async def forward_audio_to_erni():
-        """Recibe audio del frontend y lo envía a Erni como binario PCM"""
+    async def forward_audio_to_external():
+        """Recibe audio del frontend y lo envía como PCM binario."""
         try:
             while True:
                 try:
@@ -1003,11 +1032,11 @@ async def handle_erni_connection(erni_ws, websocket: WebSocket):
                     audio_data = data["bytes"]
                     if len(audio_data) > 0:
                         try:
-                            await erni_ws.send(audio_data)
+                            await external_ws.send(audio_data)
                             if len(audio_data) % 100 == 0:
-                                print(f"Audio enviado a Erni Agent: {len(audio_data)} bytes")
+                                print(f"Audio enviado a {label}: {len(audio_data)} bytes")
                         except websockets.exceptions.ConnectionClosed:
-                            print("Conexión con Erni Agent cerrada (enviando audio)")
+                            print(f"Conexión con {label} cerrada (enviando audio)")
                             break
                 
                 elif "text" in data:
@@ -1020,55 +1049,58 @@ async def handle_erni_connection(erni_ws, websocket: WebSocket):
         except WebSocketDisconnect:
             print("Cliente desconectado")
         except Exception as e:
-            print(f"Error en forward_audio_to_erni: {e}")
+            print(f"Error enviando audio a {label}: {type(e).__name__}")
 
     async def forward_events_to_client():
         """Recibe eventos JSON de Erni y los reenvía al frontend"""
         try:
             while True:
-                message = await erni_ws.recv()
+                message = await external_ws.recv()
                 if isinstance(message, str):
                     try:
                         data = json.loads(message)
                         event_type = data.get("type", "unknown")
-                        print(f"Evento de Erni Agent: {event_type}")
+                        print(f"Evento de {label}: {event_type}")
                         
                         if websocket.client_state.name != "DISCONNECTED":
                             await websocket.send_json(data)
                             
                     except json.JSONDecodeError:
-                        print(f"Mensaje no JSON de Erni: {message[:100]}")
+                        print(f"Mensaje no JSON recibido de {label}")
                 elif isinstance(message, bytes):
-                    print(f"Datos binarios inesperados de Erni: {len(message)} bytes")
+                    print(f"Datos binarios inesperados de {label}: {len(message)} bytes")
                     
         except websockets.exceptions.ConnectionClosed:
-            print("Conexión con Erni Agent cerrada")
+            print(f"Conexión con {label} cerrada")
             try:
                 if websocket.client_state.name != "DISCONNECTED":
                     await websocket.send_json({
                         "type": "error",
-                        "message": "Conexión con Erni Agent cerrada"
+                        "message": f"Conexión con {label} cerrada"
                     })
             except:
                 pass
         except Exception as e:
-            print(f"Error en forward_events_to_client: {e}")
+            print(f"Error recibiendo eventos de {label}: {type(e).__name__}")
 
     try:
-        print("Conexión con Erni Agent establecida")
+        print(f"Conexión con {label} establecida")
         if websocket.client_state.name != "DISCONNECTED":
             await websocket.send_json({
                 "type": "session.created",
-                "message": "Conectado a Erni Agent"
+                "message": f"Conectado a {label}"
             })
         
-        await asyncio.gather(
-            forward_audio_to_erni(),
-            forward_events_to_client(),
-            return_exceptions=True
+        audio_task = asyncio.create_task(forward_audio_to_external())
+        events_task = asyncio.create_task(forward_events_to_client())
+        done, pending = await asyncio.wait(
+            {audio_task, events_task}, return_when=asyncio.FIRST_COMPLETED
         )
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*done, *pending, return_exceptions=True)
     except Exception as e:
-        print(f"Error en handle_erni_connection: {e}")
+        print(f"Error en proxy de {label}: {type(e).__name__}")
         try:
             if websocket.client_state.name != "DISCONNECTED":
                 await websocket.send_json({
