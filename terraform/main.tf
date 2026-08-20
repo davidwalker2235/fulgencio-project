@@ -176,6 +176,14 @@ resource "azurerm_container_app" "backend" {
         }
       }
 
+      dynamic "env" {
+        for_each = var.voice_agent_type == "fulgencio_agent" ? toset(["enabled"]) : toset([])
+        content {
+          name        = "FULGENCIO_AGENT_URL"
+          secret_name = "fulgencio-agent-url"
+        }
+      }
+
       env {
         name        = "AZURE_OPENAI_IMAGE_API_KEY"
         secret_name = "azure-openai-image-api-key"
@@ -373,6 +381,14 @@ resource "azurerm_container_app" "backend" {
     content {
       name  = "erni-agent-url"
       value = var.erni_agent_url
+    }
+  }
+
+  dynamic "secret" {
+    for_each = var.voice_agent_type == "fulgencio_agent" ? toset(["enabled"]) : toset([])
+    content {
+      name  = "fulgencio-agent-url"
+      value = var.fulgencio_agent_url
     }
   }
 

@@ -23,6 +23,10 @@ litellm_master_key                = "sk-cambia-esta-clave-interna"
 # CORS - Se actualizará automáticamente con el FQDN del frontend después del primer despliegue
 cors_origins = "https://fulgencio-frontend.*.azurecontainerapps.io"
 
+# Agente de voz externo nuevo
+voice_agent_type    = "fulgencio_agent"
+fulgencio_agent_url = "wss://usuario:clave-codificada@agent.example/ws"
+
 # Recursos del backend
 backend_min_replicas = 1
 backend_max_replicas = 3

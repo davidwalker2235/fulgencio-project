@@ -31,6 +31,7 @@ load_dotenv()
 
 class VoiceAgent(str, Enum):
     ERNI_AGENT = "erni_agent"
+    FULGENCIO_AGENT = "fulgencio_agent"
     AZURE_AGENT = "azure_agent"
 
 app = FastAPI(title="GPT Realtime Voice API")
@@ -75,11 +76,13 @@ LITELLM_PROXY_API_KEY = os.getenv(
 )
 
 ERNI_AGENT_URL = os.getenv("ERNI_AGENT_URL", "wss://erni_voice_agent_user:74jxGh-J2a41CxZ_pQ2@robot-agent.enricd.com/ws")
+FULGENCIO_AGENT_URL = os.getenv("FULGENCIO_AGENT_URL", "")
 VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
 
 # Configuración de Firebase
 FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
 FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv("FIREBASE_SERVICE_ACCOUNT_FILE", "")
 
 # Azure SQL (datos de users y caricatura)
 AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
@@ -103,7 +106,7 @@ AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
 )
 AZURE_OPENAI_IMAGE_PROMPT = os.getenv(
     "AZURE_OPENAI_IMAGE_PROMPT",
-    "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the lines to be thin and the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible."
+    "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible. Avoid grey colors, all lines must be black. The background should be white and empty, with no additional elements or distractions. The final image should be a clean and simple line drawing that captures the essence of the caricature in a minimalist way. This picture will be drawn by a robot arm so the lines should be connected together avoiding unnecessary gaps."
 )
 firebase_app: Optional[firebase_admin.App] = None
 status_listener_started = False
@@ -117,6 +120,14 @@ main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 def is_litellm_configured() -> bool:
     """Indica si el backend puede autenticarse contra el Proxy LiteLLM."""
     return bool(LITELLM_PROXY_HTTP_URL and LITELLM_PROXY_API_KEY)
+
+
+def is_voice_agent_configured() -> bool:
+    if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT:
+        return is_litellm_configured()
+    if VOICE_AGENT_TYPE == VoiceAgent.FULGENCIO_AGENT:
+        return bool(FULGENCIO_AGENT_URL)
+    return bool(ERNI_AGENT_URL)
 
 
 def get_image_api_base() -> str:
@@ -180,13 +191,17 @@ def initialize_firebase_admin() -> None:
     if not FIREBASE_DATABASE_URL:
         print("⚠️ FIREBASE_DATABASE_URL no configurado; no se inicializa Firebase Admin.")
         return
-    if not FIREBASE_SERVICE_ACCOUNT_JSON:
-        print("⚠️ FIREBASE_SERVICE_ACCOUNT_JSON no configurado; no se inicializa Firebase Admin.")
+    if not FIREBASE_SERVICE_ACCOUNT_JSON and not FIREBASE_SERVICE_ACCOUNT_FILE:
+        print("⚠️ Credencial de Firebase Admin no configurada; no se inicializa Firebase Admin.")
         return
 
     try:
-        service_account_json = _sanitize_service_account_json(FIREBASE_SERVICE_ACCOUNT_JSON)
-        service_account_info = json.loads(service_account_json)
+        if FIREBASE_SERVICE_ACCOUNT_FILE:
+            with open(FIREBASE_SERVICE_ACCOUNT_FILE, "r", encoding="utf-8") as file:
+                service_account_info = json.load(file)
+        else:
+            service_account_json = _sanitize_service_account_json(FIREBASE_SERVICE_ACCOUNT_JSON)
+            service_account_info = json.loads(service_account_json)
         private_key = service_account_info.get("private_key")
         if isinstance(private_key, str):
             service_account_info["private_key"] = private_key.replace("\\n", "\n")
@@ -532,6 +547,42 @@ def update_user_caricature_azure_sql(order_number: str, caricature_base64: str) 
         return False
 
 
+def submit_user_number_to_firebase(user_id: str) -> dict[str, Any]:
+    """Busca un usuario en Azure SQL y publica su acción de dibujo en Firebase."""
+    if firebase_app is None:
+        raise RuntimeError("Firebase Admin no está inicializado")
+    robot_status = db.reference("status").get()
+    if robot_status != "idle":
+        raise PermissionError("Robot busy, please wait")
+    try:
+        numeric_id = int(user_id.strip())
+    except (AttributeError, ValueError):
+        raise ValueError("user_id debe ser un número entero")
+    with get_azure_sql_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""SELECT id, full_name, email, [timestamp], real_name, work_name,
+                   request_id, caricature, caricature_timestamp FROM users WHERE id = ?;""", (numeric_id,))
+        row = cursor.fetchone()
+    if row is None:
+        raise LookupError("Usuario no encontrado")
+    fields = ("id", "full_name", "email", "timestamp", "real_name", "work_name", "request_id", "caricature", "caricature_timestamp")
+    user = dict(zip(fields, row))
+    def firebase_value(value: Any) -> Any:
+        if value is None: return ""
+        if isinstance(value, (datetime.datetime, datetime.date)): return value.isoformat()
+        if isinstance(value, bytes): return value.decode("utf-8")
+        return value
+    action = {
+        "caricatureImage": firebase_value(user["caricature"]),
+        "fullName": firebase_value(user["full_name"]),
+        "timestamp": int(time.time() * 1000),
+        "type": "draw_caricature",
+        "userId": numeric_id,
+    }
+    db.reference().update({"robot_action": action})
+    return action
+
+
 def extract_base64_payload(image_data: str) -> str:
     """
     Admite data URL o base64 directo y devuelve solo el payload base64.
@@ -615,6 +666,10 @@ class RegisterUserRequest(BaseModel):
 class CaricatureGenerationRequest(BaseModel):
     orderNumber: str
     photoBase64: str
+
+
+class NumericUserRequest(BaseModel):
+    user_id: str
 
 
 class SummaryMessage(BaseModel):
@@ -756,7 +811,7 @@ async def root():
         "message": "GPT Realtime Voice API está funcionando",
         "model": MODEL_NAME,
         "voice_agent": VOICE_AGENT_TYPE.value,
-        "configured": is_litellm_configured() if VOICE_AGENT_TYPE == VoiceAgent.AZURE_AGENT else True,
+        "configured": is_voice_agent_configured(),
     }
 
 
@@ -836,6 +891,23 @@ async def register_user(payload: RegisterUserRequest):
         raise HTTPException(status_code=500, detail=str(err))
 
 
+@app.post("/robot/submit-number")
+async def submit_number(payload: NumericUserRequest):
+    """Procesa números introducidos manualmente sin pasar por IA."""
+    try:
+        action = await asyncio.to_thread(submit_user_number_to_firebase, payload.user_id)
+        return {"ok": True, "robot_action": action}
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    except PermissionError as err:
+        raise HTTPException(status_code=409, detail=str(err))
+    except Exception as err:
+        print(f"Error procesando número manual: {err}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el número")
+
+
 @app.post("/photo/generate-caricature")
 async def generate_caricature(payload: CaricatureGenerationRequest):
     """
@@ -904,6 +976,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if VOICE_AGENT_TYPE == VoiceAgent.ERNI_AGENT:
             await handle_erni_agent(websocket)
+        elif VOICE_AGENT_TYPE == VoiceAgent.FULGENCIO_AGENT:
+            await handle_fulgencio_agent(websocket)
         else:
             await handle_azure_agent(websocket)
     finally:
@@ -912,20 +986,37 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def handle_erni_agent(websocket: WebSocket):
-    """Maneja la conexión con Erni Agent"""
+    """Conecta el frontend con el agente Erni externo."""
+    await handle_external_agent(websocket, ERNI_AGENT_URL, "Erni Agent")
+
+
+async def handle_fulgencio_agent(websocket: WebSocket):
+    """Conecta el frontend con el agente Fulgencio externo."""
+    await handle_external_agent(websocket, FULGENCIO_AGENT_URL, "Fulgencio Agent")
+
+
+async def handle_external_agent(websocket: WebSocket, url: str, label: str):
+    """Proxy genérico para agentes externos que implementan el protocolo Erni."""
+    if not url:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"{label} no está configurado."
+        })
+        await websocket.close()
+        return
     try:
-        print(f"Conectando a Erni Agent: {ERNI_AGENT_URL.split('@')[1] if '@' in ERNI_AGENT_URL else ERNI_AGENT_URL}")
-        
-        async with websockets.connect(ERNI_AGENT_URL) as erni_ws:
-            await handle_erni_connection(erni_ws, websocket)
+        parsed_url = urllib.parse.urlsplit(url)
+        print(f"Conectando a {label}: {parsed_url.hostname or 'host externo'}")
+        async with websockets.connect(url) as external_ws:
+            await handle_external_agent_connection(external_ws, websocket, label)
     
     except Exception as e:
-        print(f"Error en Erni Agent WebSocket: {e}")
+        print(f"Error en {label} WebSocket: {type(e).__name__}")
         try:
             if websocket.client_state.name != "DISCONNECTED":
                 await websocket.send_json({
                     "type": "error",
-                    "message": f"Error al conectar con Erni Agent: {str(e)}"
+                    "message": f"Error al conectar con {label}"
                 })
         except:
             pass
@@ -980,15 +1071,15 @@ async def handle_azure_agent(websocket: WebSocket):
             pass
 
 
-async def handle_erni_connection(erni_ws, websocket: WebSocket):
+async def handle_external_agent_connection(external_ws, websocket: WebSocket, label: str):
     """
-    Maneja la conexión con Erni Agent.
+    Maneja la conexión con un agente externo compatible.
     - Envía audio PCM binario directamente (16-bit, 16kHz, mono)
     - Recibe eventos JSON: stt_chunk, stt_output, agent_chunk, agent_end, tool_call, tool_result, tts_chunk
     """
     
-    async def forward_audio_to_erni():
-        """Recibe audio del frontend y lo envía a Erni como binario PCM"""
+    async def forward_audio_to_external():
+        """Recibe audio del frontend y lo envía como PCM binario."""
         try:
             while True:
                 try:
@@ -1003,11 +1094,11 @@ async def handle_erni_connection(erni_ws, websocket: WebSocket):
                     audio_data = data["bytes"]
                     if len(audio_data) > 0:
                         try:
-                            await erni_ws.send(audio_data)
+                            await external_ws.send(audio_data)
                             if len(audio_data) % 100 == 0:
-                                print(f"Audio enviado a Erni Agent: {len(audio_data)} bytes")
+                                print(f"Audio enviado a {label}: {len(audio_data)} bytes")
                         except websockets.exceptions.ConnectionClosed:
-                            print("Conexión con Erni Agent cerrada (enviando audio)")
+                            print(f"Conexión con {label} cerrada (enviando audio)")
                             break
                 
                 elif "text" in data:
@@ -1020,55 +1111,58 @@ async def handle_erni_connection(erni_ws, websocket: WebSocket):
         except WebSocketDisconnect:
             print("Cliente desconectado")
         except Exception as e:
-            print(f"Error en forward_audio_to_erni: {e}")
+            print(f"Error enviando audio a {label}: {type(e).__name__}")
 
     async def forward_events_to_client():
         """Recibe eventos JSON de Erni y los reenvía al frontend"""
         try:
             while True:
-                message = await erni_ws.recv()
+                message = await external_ws.recv()
                 if isinstance(message, str):
                     try:
                         data = json.loads(message)
                         event_type = data.get("type", "unknown")
-                        print(f"Evento de Erni Agent: {event_type}")
+                        print(f"Evento de {label}: {event_type}")
                         
                         if websocket.client_state.name != "DISCONNECTED":
                             await websocket.send_json(data)
                             
                     except json.JSONDecodeError:
-                        print(f"Mensaje no JSON de Erni: {message[:100]}")
+                        print(f"Mensaje no JSON recibido de {label}")
                 elif isinstance(message, bytes):
-                    print(f"Datos binarios inesperados de Erni: {len(message)} bytes")
+                    print(f"Datos binarios inesperados de {label}: {len(message)} bytes")
                     
         except websockets.exceptions.ConnectionClosed:
-            print("Conexión con Erni Agent cerrada")
+            print(f"Conexión con {label} cerrada")
             try:
                 if websocket.client_state.name != "DISCONNECTED":
                     await websocket.send_json({
                         "type": "error",
-                        "message": "Conexión con Erni Agent cerrada"
+                        "message": f"Conexión con {label} cerrada"
                     })
             except:
                 pass
         except Exception as e:
-            print(f"Error en forward_events_to_client: {e}")
+            print(f"Error recibiendo eventos de {label}: {type(e).__name__}")
 
     try:
-        print("Conexión con Erni Agent establecida")
+        print(f"Conexión con {label} establecida")
         if websocket.client_state.name != "DISCONNECTED":
             await websocket.send_json({
                 "type": "session.created",
-                "message": "Conectado a Erni Agent"
+                "message": f"Conectado a {label}"
             })
         
-        await asyncio.gather(
-            forward_audio_to_erni(),
-            forward_events_to_client(),
-            return_exceptions=True
+        audio_task = asyncio.create_task(forward_audio_to_external())
+        events_task = asyncio.create_task(forward_events_to_client())
+        done, pending = await asyncio.wait(
+            {audio_task, events_task}, return_when=asyncio.FIRST_COMPLETED
         )
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*done, *pending, return_exceptions=True)
     except Exception as e:
-        print(f"Error en handle_erni_connection: {e}")
+        print(f"Error en proxy de {label}: {type(e).__name__}")
         try:
             if websocket.client_state.name != "DISCONNECTED":
                 await websocket.send_json({

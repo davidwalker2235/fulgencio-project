@@ -30,6 +30,12 @@ Si la variable `VOICE_AGENT_TYPE` vale `erni_agent`, también es obligatorio:
 |---|---|
 | `ERNI_AGENT_URL` | URL WebSocket completa del agente Erni, incluidas sus credenciales. |
 
+Si la variable `VOICE_AGENT_TYPE` vale `fulgencio_agent`, también es obligatorio:
+
+| Secret | Valor |
+|---|---|
+| `FULGENCIO_AGENT_URL` | URL WebSocket completa del agente Fulgencio, incluidas las credenciales Basic Auth. |
+
 ## Secrets opcionales
 
 | Secret | Uso |
@@ -41,7 +47,7 @@ Si la variable `VOICE_AGENT_TYPE` vale `erni_agent`, también es obligatorio:
 
 | Variable | Valor |
 |---|---|
-| `VOICE_AGENT_TYPE` | `erni_agent` o `azure_agent`. Si no existe, el workflow usa `erni_agent`. |
+| `VOICE_AGENT_TYPE` | `erni_agent`, `fulgencio_agent` o `azure_agent`. Si no existe, el workflow usa `erni_agent`. |
 
 Los modelos se fijan en el workflow:
 

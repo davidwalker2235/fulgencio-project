@@ -133,11 +133,16 @@ variable "cors_origins" {
   default     = "https://fulgencio-frontend.*.azurecontainerapps.io"
 }
 
-# Voice agent (erni_agent | azure_agent)
+# Voice agent (erni_agent | fulgencio_agent | azure_agent)
 variable "voice_agent_type" {
-  description = "Tipo de agente de voz: erni_agent o azure_agent"
+  description = "Tipo de agente de voz: erni_agent, fulgencio_agent o azure_agent"
   type        = string
   default     = "erni_agent"
+
+  validation {
+    condition     = contains(["erni_agent", "fulgencio_agent", "azure_agent"], var.voice_agent_type)
+    error_message = "voice_agent_type debe ser erni_agent, fulgencio_agent o azure_agent."
+  }
 }
 
 variable "erni_agent_url" {
@@ -152,6 +157,13 @@ variable "model_image_name" {
   description = "Nombre del modelo de imagen Azure OpenAI"
   type        = string
   default     = "gpt-image-2"
+}
+
+variable "fulgencio_agent_url" {
+  description = "URL del WebSocket de Fulgencio Agent (incluye credenciales Basic Auth)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "azure_openai_image_api_key" {
@@ -174,7 +186,7 @@ variable "azure_openai_image_api_version" {
 variable "azure_openai_image_prompt" {
   description = "Prompt para generación de caricaturas"
   type        = string
-  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the lines to be thin and the details to be as minimalist as possible while preserving the exaggerated proportions."
+  default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible. Avoid grey colors, all lines must be black. The background should be white and empty, with no additional elements or distractions. The final image should be a clean and simple line drawing that captures the essence of the caricature in a minimalist way. This picture will be drawn by a robot arm so the lines should be connected together avoiding unnecessary gaps."
 }
 
 variable "azure_openai_image_endpoint" {
