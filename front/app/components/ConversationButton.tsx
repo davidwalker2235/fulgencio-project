@@ -17,6 +17,7 @@ export default function ConversationButton({
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
   const [numericInput, setNumericInput] = useState("");
   const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
+  const [numericError, setNumericError] = useState<string | null>(null);
   const numericInputRef = useRef<HTMLInputElement>(null);
   const successSnackbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,7 +71,8 @@ export default function ConversationButton({
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to send numeric code. Status: ${response.status}`);
+      const body = await response.json().catch(() => null) as { data?: { detail?: string }; detail?: string } | null;
+      throw new Error(body?.data?.detail ?? body?.detail ?? `Failed to send numeric code. Status: ${response.status}`);
     }
   };
 
@@ -83,9 +85,10 @@ export default function ConversationButton({
     }
 
     try {
+      setNumericError(null);
       await sendNumericCode(code);
     } catch (error) {
-      console.error("Error sending numeric code:", error);
+      setNumericError(error instanceof Error ? error.message : "Unable to send number");
       numericInputRef.current?.focus();
       return;
     }
@@ -117,6 +120,11 @@ export default function ConversationButton({
               Number sent successfully
             </div>
           </div>
+          {numericError && (
+            <div className="mb-3 rounded-full bg-red-600 px-6 py-3 text-center text-sm font-semibold text-white shadow-lg" role="alert">
+              {numericError}
+            </div>
+          )}
 
           <div className="relative">
             <input

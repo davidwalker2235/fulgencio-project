@@ -551,6 +551,9 @@ def submit_user_number_to_firebase(user_id: str) -> dict[str, Any]:
     """Busca un usuario en Azure SQL y publica su acción de dibujo en Firebase."""
     if firebase_app is None:
         raise RuntimeError("Firebase Admin no está inicializado")
+    robot_status = db.reference("status").get()
+    if robot_status != "idle":
+        raise PermissionError("Robot busy, please wait")
     try:
         numeric_id = int(user_id.strip())
     except (AttributeError, ValueError):
@@ -898,6 +901,8 @@ async def submit_number(payload: NumericUserRequest):
         raise HTTPException(status_code=400, detail=str(err))
     except LookupError as err:
         raise HTTPException(status_code=404, detail=str(err))
+    except PermissionError as err:
+        raise HTTPException(status_code=409, detail=str(err))
     except Exception as err:
         print(f"Error procesando número manual: {err}")
         raise HTTPException(status_code=500, detail="No se pudo procesar el número")
