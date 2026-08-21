@@ -1150,7 +1150,9 @@ async def handle_external_agent_connection(external_ws, websocket: WebSocket, la
         if websocket.client_state.name != "DISCONNECTED":
             await websocket.send_json({
                 "type": "session.created",
-                "message": f"Conectado a {label}"
+                "message": f"Conectado a {label}",
+                "voice_agent": VOICE_AGENT_TYPE.value,
+                "server_manages_responses": label == "Fulgencio Agent",
             })
         
         audio_task = asyncio.create_task(forward_audio_to_external())

@@ -61,6 +61,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const { write, remove, subscribe } = useFirebase();
 
   const currentResponseIdRef = useRef<string | null>(null);
+  const serverManagesResponsesRef = useRef(false);
   const isUserSpeakingRef = useRef<boolean>(false);
   const isInterruptedRef = useRef<boolean>(false);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -194,7 +195,11 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         }
         // Esperar silencio antes de solicitar respuesta
         silenceTimerRef.current = setTimeout(() => {
-          if (wsIsConnected() && !currentResponseIdRef.current) {
+          if (
+            wsIsConnected() &&
+            !currentResponseIdRef.current &&
+            !serverManagesResponsesRef.current
+          ) {
             console.log("Usuario dejó de hablar - solicitando respuesta");
             send({
               type: "response.create",
@@ -236,6 +241,10 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         } catch (audioErr) {
           console.error("Error reproduciendo audio:", audioErr);
         }
+      });
+
+      onMessage("session.created", (data: WebSocketMessage) => {
+        serverManagesResponsesRef.current = data.server_manages_responses === true;
       });
 
       onMessage("conversation.item.input_audio_transcription.completed", (data: WebSocketMessage) => {
@@ -532,6 +541,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
 
           // Resetear estados
           currentResponseIdRef.current = null;
+          serverManagesResponsesRef.current = false;
           isUserSpeakingRef.current = false;
           isInterruptedRef.current = false;
           if (silenceTimerRef.current) {
