@@ -1071,6 +1071,17 @@ async def handle_azure_agent(websocket: WebSocket):
             pass
 
 
+def normalize_external_agent_event(data: dict, label: str) -> dict:
+    """Mantiene el contrato del proxy en eventos de sesión del agente remoto."""
+    if data.get("type") != "session.created":
+        return data
+    return {
+        **data,
+        "voice_agent": VOICE_AGENT_TYPE.value,
+        "server_manages_responses": label == "Fulgencio Agent",
+    }
+
+
 async def handle_external_agent_connection(external_ws, websocket: WebSocket, label: str):
     """
     Maneja la conexión con un agente externo compatible.
@@ -1123,6 +1134,8 @@ async def handle_external_agent_connection(external_ws, websocket: WebSocket, la
                         data = json.loads(message)
                         event_type = data.get("type", "unknown")
                         print(f"Evento de {label}: {event_type}")
+
+                        data = normalize_external_agent_event(data, label)
                         
                         if websocket.client_state.name != "DISCONNECTED":
                             await websocket.send_json(data)

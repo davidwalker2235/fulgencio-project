@@ -23,6 +23,19 @@ class _AsyncContext:
 
 
 class TestLiteLLMAdapters(unittest.TestCase):
+    def test_fulgencio_session_events_keep_server_response_management(self):
+        event = {"type": "session.created", "message": "Sesión iniciada"}
+
+        with patch.object(
+            main, "VOICE_AGENT_TYPE", main.VoiceAgent.FULGENCIO_AGENT
+        ):
+            normalized = main.normalize_external_agent_event(
+                event, "Fulgencio Agent"
+            )
+
+        self.assertEqual(normalized["voice_agent"], "fulgencio_agent")
+        self.assertIs(normalized["server_manages_responses"], True)
+
     def test_parse_generated_base64_list_supports_sdk_objects(self):
         response = SimpleNamespace(
             data=[

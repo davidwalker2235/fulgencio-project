@@ -244,7 +244,9 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       onMessage("session.created", (data: WebSocketMessage) => {
-        serverManagesResponsesRef.current = data.server_manages_responses === true;
+        if (typeof data.server_manages_responses === "boolean") {
+          serverManagesResponsesRef.current = data.server_manages_responses;
+        }
       });
 
       onMessage("conversation.item.input_audio_transcription.completed", (data: WebSocketMessage) => {
