@@ -61,6 +61,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const { write, remove, subscribe } = useFirebase();
 
   const currentResponseIdRef = useRef<string | null>(null);
+  const assistantResponseActiveRef = useRef(false);
   const serverManagesResponsesRef = useRef(false);
   const isUserSpeakingRef = useRef<boolean>(false);
   const isInterruptedRef = useRef<boolean>(false);
@@ -69,6 +70,66 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const wasAssistantSpeakingRef = useRef<boolean>(false);
   const halfDuplexHoldUntilRef = useRef<number>(0);
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
+
+  const appendAssistantDelta = useCallback((deltaText: string) => {
+    if (!deltaText || !deltaText.trim()) {
+      return;
+    }
+
+    setTranscription((prev) => {
+      const lastMessage = prev[prev.length - 1];
+
+      if (assistantResponseActiveRef.current && lastMessage?.role === "assistant") {
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...lastMessage,
+            content: lastMessage.content + deltaText,
+          },
+        ];
+      }
+
+      assistantResponseActiveRef.current = true;
+      return [
+        ...prev,
+        {
+          role: "assistant",
+          content: deltaText,
+          timestamp: new Date(),
+        },
+      ];
+    });
+  }, []);
+
+  const setAssistantFinalText = useCallback((fullText: string) => {
+    if (!fullText || !fullText.trim()) {
+      return;
+    }
+
+    setTranscription((prev) => {
+      const lastMessage = prev[prev.length - 1];
+
+      if (assistantResponseActiveRef.current && lastMessage?.role === "assistant") {
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...lastMessage,
+            content: fullText,
+          },
+        ];
+      }
+
+      assistantResponseActiveRef.current = true;
+      return [
+        ...prev,
+        {
+          role: "assistant",
+          content: fullText,
+          timestamp: new Date(),
+        },
+      ];
+    });
+  }, []);
 
   // Monitorear el estado del audio para actualizar isSpeaking
   useEffect(() => {
@@ -284,68 +345,14 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         console.log("📝 Delta de texto recibido:", data);
         const deltaText = (data.delta as string) || "";
         console.log("📝 Contenido delta:", deltaText);
-        
-        if (!deltaText || deltaText.trim() === "") {
-          console.log("⚠️ Delta vacío, ignorando");
-          return;
-        }
-        
-        setTranscription((prev) => {
-          console.log("📝 Estado anterior:", prev);
-          const lastMessage = prev[prev.length - 1];
-          console.log("📝 Último mensaje:", lastMessage);
-          
-          if (lastMessage && lastMessage.role === "assistant") {
-            const updated = [
-              ...prev.slice(0, -1),
-              {
-                ...lastMessage,
-                content: lastMessage.content + deltaText,
-              },
-            ];
-            console.log("📝 Actualizando mensaje existente de asistente, nuevo contenido:", updated[updated.length - 1].content);
-            return updated;
-          } else {
-            const newMessage = {
-              role: "assistant" as const,
-              content: deltaText,
-              timestamp: new Date(),
-            };
-            console.log("📝 Creando nuevo mensaje de asistente:", newMessage);
-            return [...prev, newMessage];
-          }
-        });
+        appendAssistantDelta(deltaText);
       });
 
       onMessage("conversation.item.output_text.done", (data: WebSocketMessage) => {
         console.log("✅ Texto completo recibido:", data);
         const fullText = (data.text as string) || "";
         console.log("✅ Contenido completo:", fullText);
-        
-        setTranscription((prev) => {
-          const lastMessage = prev[prev.length - 1];
-          console.log("✅ Último mensaje antes de done:", lastMessage);
-          
-          if (lastMessage && lastMessage.role === "assistant") {
-            const updated = [
-              ...prev.slice(0, -1),
-              {
-                ...lastMessage,
-                content: fullText || lastMessage.content,
-              },
-            ];
-            console.log("✅ Actualizando mensaje final de asistente");
-            return updated;
-          } else {
-            const newMessage = {
-              role: "assistant" as const,
-              content: fullText,
-              timestamp: new Date(),
-            };
-            console.log("✅ Creando nuevo mensaje final de asistente:", newMessage);
-            return [...prev, newMessage];
-          }
-        });
+        setAssistantFinalText(fullText);
       });
 
       // Handler para transcripción de audio de la IA (si viene como audio_transcript)
@@ -358,28 +365,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           return;
         }
         
-        setTranscription((prev) => {
-          const lastMessage = prev[prev.length - 1];
-          
-          if (lastMessage && lastMessage.role === "assistant") {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...lastMessage,
-                content: lastMessage.content + transcriptDelta,
-              },
-            ];
-          } else {
-            return [
-              ...prev,
-              {
-                role: "assistant",
-                content: transcriptDelta,
-                timestamp: new Date(),
-              },
-            ];
-          }
-        });
+        appendAssistantDelta(transcriptDelta);
       });
 
       onMessage("response.audio_transcript.done", (data: WebSocketMessage) => {
@@ -391,31 +377,11 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           return;
         }
         
-        setTranscription((prev) => {
-          const lastMessage = prev[prev.length - 1];
-          
-          if (lastMessage && lastMessage.role === "assistant") {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...lastMessage,
-                content: fullTranscript || lastMessage.content,
-              },
-            ];
-          } else {
-            return [
-              ...prev,
-              {
-                role: "assistant",
-                content: fullTranscript,
-                timestamp: new Date(),
-              },
-            ];
-          }
-        });
+        setAssistantFinalText(fullTranscript);
       });
 
       onMessage("response.created", (data: WebSocketMessage) => {
+        assistantResponseActiveRef.current = false;
         currentResponseIdRef.current =
           (data.response as { id?: string })?.id || null;
         console.log("Respuesta creada:", currentResponseIdRef.current);
@@ -423,11 +389,13 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
 
       onMessage("response.done", () => {
         console.log("Respuesta completada");
+        assistantResponseActiveRef.current = false;
         currentResponseIdRef.current = null;
       });
 
       onMessage("response.cancelled", () => {
         console.log("Respuesta cancelada por el servidor");
+        assistantResponseActiveRef.current = false;
         currentResponseIdRef.current = null;
         stopAllAudio();
         isInterruptedRef.current = false;
@@ -469,36 +437,13 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       onMessage("agent_chunk", (data: WebSocketMessage) => {
         console.log("💬 [Erni] Agent chunk:", data.text);
         const chunkText = (data.text as string) || "";
-        
-        if (!chunkText) return;
-        
-        setTranscription((prev) => {
-          const lastMessage = prev[prev.length - 1];
-          
-          if (lastMessage && lastMessage.role === "assistant") {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...lastMessage,
-                content: lastMessage.content + chunkText,
-              },
-            ];
-          } else {
-            return [
-              ...prev,
-              {
-                role: "assistant",
-                content: chunkText,
-                timestamp: new Date(),
-              },
-            ];
-          }
-        });
+        appendAssistantDelta(chunkText);
       });
 
       // Fin de respuesta del agente
       onMessage("agent_end", () => {
         console.log("✅ [Erni] Agent respuesta completada");
+        assistantResponseActiveRef.current = false;
         currentResponseIdRef.current = null;
       });
 
@@ -543,6 +488,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
 
           // Resetear estados
           currentResponseIdRef.current = null;
+          assistantResponseActiveRef.current = false;
           serverManagesResponsesRef.current = false;
           isUserSpeakingRef.current = false;
           isInterruptedRef.current = false;
@@ -592,6 +538,8 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     audioIsRecording,
     hasActiveAudio,
     handleUserSpeaking,
+    appendAssistantDelta,
+    setAssistantFinalText,
   ]);
 
   const stopConversation = useCallback((transcription: Message[]) => {
@@ -698,6 +646,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setIsConnected(false);
     setConnectionStatus("Disconnected");
     currentResponseIdRef.current = null;
+    assistantResponseActiveRef.current = false;
     isUserSpeakingRef.current = false;
     setRobotActionUserId(null);
     setActiveUserId(null);
