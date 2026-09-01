@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import credentials, db
+from fulgencio_conversation import add_config_query, load_instructions
 from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from pydantic import BaseModel
 
@@ -78,6 +79,7 @@ LITELLM_PROXY_API_KEY = os.getenv(
 ERNI_AGENT_URL = os.getenv("ERNI_AGENT_URL", "wss://erni_voice_agent_user:74jxGh-J2a41CxZ_pQ2@robot-agent.enricd.com/ws")
 FULGENCIO_AGENT_URL = os.getenv("FULGENCIO_AGENT_URL", "")
 VOICE_AGENT_TYPE = VoiceAgent(os.getenv("VOICE_AGENT_TYPE", "erni_agent"))
+FULGENCIO_CONVERSATION_INSTRUCTIONS = load_instructions()
 
 # Configuración de Firebase
 FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
@@ -992,10 +994,21 @@ async def handle_erni_agent(websocket: WebSocket):
 
 async def handle_fulgencio_agent(websocket: WebSocket):
     """Conecta el frontend con el agente Fulgencio externo."""
-    await handle_external_agent(websocket, FULGENCIO_AGENT_URL, "Fulgencio Agent")
+    await handle_external_agent(
+        websocket,
+        FULGENCIO_AGENT_URL,
+        "Fulgencio Agent",
+        conversation_instructions=FULGENCIO_CONVERSATION_INSTRUCTIONS,
+    )
 
 
-async def handle_external_agent(websocket: WebSocket, url: str, label: str):
+async def handle_external_agent(
+    websocket: WebSocket,
+    url: str,
+    label: str,
+    *,
+    conversation_instructions: str | None = None,
+):
     """Proxy genérico para agentes externos que implementan el protocolo Erni."""
     if not url:
         await websocket.send_json({
@@ -1005,9 +1018,22 @@ async def handle_external_agent(websocket: WebSocket, url: str, label: str):
         await websocket.close()
         return
     try:
-        parsed_url = urllib.parse.urlsplit(url)
+        connection_url = (
+            add_config_query(url) if conversation_instructions else url
+        )
+        parsed_url = urllib.parse.urlsplit(connection_url)
         print(f"Conectando a {label}: {parsed_url.hostname or 'host externo'}")
-        async with websockets.connect(url) as external_ws:
+        async with websockets.connect(connection_url) as external_ws:
+            if conversation_instructions:
+                await external_ws.send(
+                    json.dumps(
+                        {
+                            "type": "conversation.configure",
+                            "instructions": conversation_instructions,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
             await handle_external_agent_connection(external_ws, websocket, label)
     
     except Exception as e:

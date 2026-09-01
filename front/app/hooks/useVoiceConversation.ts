@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useWebSocket } from "./useWebSocket";
 import { useAudioRecording } from "./useAudioRecording";
 import { useAudioPlayback } from "./useAudioPlayback";
-import { API_BASE_URL, WEBSOCKET_URL, VOICE_DETECTION } from "../constants";
+import { WEBSOCKET_URL, VOICE_DETECTION } from "../constants";
 import {
   Message,
   ConnectionStatus,
@@ -26,8 +26,8 @@ interface UseVoiceConversationReturn {
   currentUserPhoto: string | null;
   activeUserId: string | null;
   startConversation: () => Promise<void>;
-  stopConversation: (transcripción: Message[]) => void;
-  toggleConversation: (transcripción: Message[]) => void;
+  stopConversation: () => void;
+  toggleConversation: () => void;
   clearError: () => void;
   sendTextMessage: (text: string) => void;
 }
@@ -58,7 +58,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
   const { startRecording, stopRecording, isRecording: audioIsRecording } =
     useAudioRecording();
   const { playAudio, stopAllAudio, hasActiveAudio } = useAudioPlayback();
-  const { write, remove, subscribe } = useFirebase();
+  const { write, subscribe } = useFirebase();
 
   const currentResponseIdRef = useRef<string | null>(null);
   const assistantResponseActiveRef = useRef(false);
@@ -542,7 +542,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setAssistantFinalText,
   ]);
 
-  const stopConversation = useCallback((transcription: Message[]) => {
+  const stopConversation = useCallback(() => {
     console.log("Deteniendo conversación...");
 
     // Detener todo el audio inmediatamente
@@ -569,70 +569,6 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       silenceTimerRef.current = null;
     }
 
-    // Guardar resumen (solo mensajes user) en users/{userId}/transcriptions,
-    // usando exclusivamente userId proveniente de robot_action.
-    const storageUserId = robotActionUserId;
-    if (storageUserId) {
-      const timestamp = Date.now();
-      const userMessagesOnly = transcription
-        .filter((msg) => msg.role === "user")
-        .map((msg) => msg.content.trim())
-        .filter((msg) => msg.length > 0);
-      const fallbackSummary = userMessagesOnly.join(" ").trim();
-
-      void (async () => {
-        let summaryText = fallbackSummary;
-        try {
-          const response = await fetch(`${API_BASE_URL}/transcriptions/summarize`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messages: transcription.map((msg) => ({
-                role: msg.role,
-                content: msg.content,
-              })),
-            }),
-          });
-
-          if (response.ok) {
-            const data: unknown = await response.json();
-            if (
-              typeof data === "object" &&
-              data !== null &&
-              "summary" in data &&
-              typeof (data as { summary?: unknown }).summary === "string"
-            ) {
-              const candidate = (data as { summary: string }).summary.trim();
-              if (candidate) {
-                summaryText = candidate;
-              }
-            }
-          } else {
-            const errorBody = await response.text();
-            console.error("❌ Error generando resumen en backend:", response.status, errorBody);
-          }
-        } catch (err) {
-          console.error("❌ Error llamando endpoint de resumen:", err);
-        }
-
-        await write(`users/${storageUserId}/transcriptions/${timestamp}`, {
-          summary: summaryText,
-          generatedAt: new Date().toISOString(),
-          userMessageCount: userMessagesOnly.length,
-          source: "gpt-realtime-user-only",
-        });
-        console.log(`Resumen guardado en users/${storageUserId}/transcriptions/${timestamp}`);
-      })();
-
-      remove(`users/${storageUserId}/photo`).catch((err) => {
-        console.error(`❌ Error borrando users/${storageUserId}/photo:`, err);
-      });
-    } else {
-      console.warn("⚠️ robot_action.userId vacío o ausente, no se guardará la transcripción");
-    }
-
     // Al detener conversación, limpiar siempre currentUser y robot_action.
     write("currentUser", null).catch((err) => {
       console.error("❌ Error reseteando currentUser a null:", err);
@@ -651,11 +587,11 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
     setRobotActionUserId(null);
     setActiveUserId(null);
     setTranscription([]);
-  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write, remove, robotActionUserId]);
+  }, [disconnect, stopRecording, stopAllAudio, send, wsIsConnected, write]);
 
-  const toggleConversation = useCallback((transcription: Message[]) => {
+  const toggleConversation = useCallback(() => {
     if (isRecording) {
-      stopConversation(transcription);
+      stopConversation();
     } else {
       startConversation();
     }

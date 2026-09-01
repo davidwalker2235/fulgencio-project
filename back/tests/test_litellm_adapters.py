@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import main
+import fulgencio_conversation
 
 
 class _AsyncContext:
@@ -122,8 +124,9 @@ class TestLiteLLMAdapters(unittest.TestCase):
             close=AsyncMock(),
             client_state=SimpleNamespace(name="CONNECTED"),
         )
-        external_socket = object()
+        external_socket = SimpleNamespace(send=AsyncMock())
         main.FULGENCIO_AGENT_URL = "wss://user:pass@agent.example/ws"
+        main.FULGENCIO_CONVERSATION_INSTRUCTIONS = "Conversación personalizada"
 
         async def run():
             with patch.object(
@@ -138,9 +141,78 @@ class TestLiteLLMAdapters(unittest.TestCase):
             return connect, proxy
 
         connect, proxy = asyncio.run(run())
-        connect.assert_called_once_with(main.FULGENCIO_AGENT_URL)
+        connect.assert_called_once_with(
+            "wss://user:pass@agent.example/ws?conversation_config=1"
+        )
+        external_socket.send.assert_awaited_once()
+        self.assertEqual(
+            json.loads(external_socket.send.await_args.args[0]),
+            {
+                "type": "conversation.configure",
+                "instructions": "Conversación personalizada",
+            },
+        )
         proxy.assert_awaited_once_with(external_socket, websocket, "Fulgencio Agent")
         self.assertEqual(main.VoiceAgent("fulgencio_agent"), main.VoiceAgent.FULGENCIO_AGENT)
+
+    def test_fulgencio_without_prompt_uses_original_url(self):
+        websocket = SimpleNamespace(
+            send_json=AsyncMock(),
+            close=AsyncMock(),
+            client_state=SimpleNamespace(name="CONNECTED"),
+        )
+        external_socket = SimpleNamespace(send=AsyncMock())
+        main.FULGENCIO_AGENT_URL = "wss://user:pass@agent.example/ws"
+        main.FULGENCIO_CONVERSATION_INSTRUCTIONS = None
+
+        async def run():
+            with patch.object(
+                main.websockets,
+                "connect",
+                return_value=_AsyncContext(external_socket),
+            ) as connect:
+                with patch.object(
+                    main, "handle_external_agent_connection", new=AsyncMock()
+                ):
+                    await main.handle_fulgencio_agent(websocket)
+            return connect
+
+        connect = asyncio.run(run())
+        connect.assert_called_once_with(main.FULGENCIO_AGENT_URL)
+        external_socket.send.assert_not_awaited()
+
+    def test_conversation_config_query_preserves_existing_query(self):
+        url = "wss://user:pass@agent.example/ws?region=eu&conversation_config=old"
+
+        self.assertEqual(
+            fulgencio_conversation.add_config_query(url),
+            "wss://user:pass@agent.example/ws?region=eu&conversation_config=1",
+        )
+
+    def test_missing_prompts_module_uses_default_agent_conversation(self):
+        missing = ModuleNotFoundError("No module named prompts", name="prompts")
+        with patch.object(
+            fulgencio_conversation.importlib, "import_module", side_effect=missing
+        ):
+            self.assertIsNone(fulgencio_conversation.load_instructions())
+
+    def test_missing_or_empty_prompt_constant_uses_default(self):
+        with patch.object(
+            fulgencio_conversation.importlib,
+            "import_module",
+            return_value=SimpleNamespace(),
+        ):
+            self.assertIsNone(fulgencio_conversation.load_instructions())
+        with patch.object(
+            fulgencio_conversation.importlib,
+            "import_module",
+            return_value=SimpleNamespace(FULGENCIO_CONVERSATION_INSTRUCTIONS="   "),
+        ):
+            self.assertIsNone(fulgencio_conversation.load_instructions())
+
+    def test_prompt_constant_must_be_text(self):
+        with self.assertRaisesRegex(TypeError, "debe ser texto"):
+            fulgencio_conversation.normalize_instructions(123)
 
 
 if __name__ == "__main__":

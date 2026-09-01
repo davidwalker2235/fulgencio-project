@@ -40,7 +40,7 @@ export default function VoiceConversation() {
           <ConversationButton
             isRecording={isRecording}
             connectionStatus={connectionStatus}
-            onToggle={() => toggleConversation(transcription)}
+            onToggle={toggleConversation}
           />
           <ErrorDisplay error={error} onClose={clearError} />
         </div>
