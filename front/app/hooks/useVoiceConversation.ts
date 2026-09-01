@@ -233,6 +233,13 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
 
   const handleUserSpeaking = useCallback(
     (isSpeaking: boolean, wasSpeaking: boolean) => {
+      // Marcar el comienzo de un turno nuevo antes de que llegue el STT.
+      // Así, la primera respuesta del agente se muestra como un subtítulo
+      // independiente aunque el servidor no emita el evento de inicio.
+      if (isSpeaking && !wasSpeaking) {
+        assistantResponseActiveRef.current = false;
+      }
+
       const isHalfDuplexBlocked =
         hasActiveAudio() || Date.now() < halfDuplexHoldUntilRef.current;
       if (isHalfDuplexBlocked) {
