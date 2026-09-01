@@ -311,6 +311,9 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       });
 
       onMessage("conversation.item.input_audio_transcription.completed", (data: WebSocketMessage) => {
+        // La siguiente respuesta del agente debe iniciar un subtítulo nuevo,
+        // nunca continuar el texto de la respuesta anterior.
+        assistantResponseActiveRef.current = false;
         const userMessage: Message = {
           role: "user",
           content: (data.transcript as string) || "",
@@ -425,6 +428,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       // Transcripción final del usuario
       onMessage("stt_output", (data: WebSocketMessage) => {
         console.log("🎤 [Erni] STT final:", data.transcript);
+        assistantResponseActiveRef.current = false;
         const userMessage: Message = {
           role: "user",
           content: (data.transcript as string) || "",
@@ -612,6 +616,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       }
 
       // Agregar mensaje del usuario a la transcripción inmediatamente
+      assistantResponseActiveRef.current = false;
       const userMessage: Message = {
         role: "user",
         content: text.trim(),
