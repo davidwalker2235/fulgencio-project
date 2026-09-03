@@ -116,7 +116,8 @@ export default function Screen() {
       ? CENTER_METAQUEST_VISIBLE_MS
       : CENTER_QR_VISIBLE_MS;
     const id = window.setTimeout(() => {
-      setCenterShowsMetaquestGif((prev) => !prev);
+      // TODO: to activate if we want to show a gift or raffle
+      // setCenterShowsMetaquestGif((prev) => !prev);
     }, delay);
     return () => window.clearTimeout(id);
   }, [centerShowsMetaquestGif]);
@@ -227,7 +228,7 @@ export default function Screen() {
             className="font-semibold tracking-tight text-[#003B88]"
             style={{ fontSize: "min(2.4vw, 4.2dvh)" }}
           >
-            #ERNIxCodemotion
+            #ERNIxIndustrieforum
           </p>
         </footer>
       </section>
