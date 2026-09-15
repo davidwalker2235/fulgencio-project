@@ -10,6 +10,10 @@ import NextUserIndicator from "../components/NextUserIndicator";
 const CENTER_QR_VISIBLE_MS = 120_000;
 /** Vista "Participate..." + GIF: cuánto tiempo se muestra antes de volver al QR */
 const CENTER_METAQUEST_VISIBLE_MS = 30_000;
+/** Intervalo entre apariciones de la diapositiva promocional */
+const PPT_SLIDE_INTERVAL_MS = 180_000;
+/** Tiempo que permanece visible la diapositiva promocional */
+const PPT_SLIDE_VISIBLE_MS = 30_000;
 
 export default function Screen() {
   const promoVideoRef = useRef<HTMLVideoElement>(null);
@@ -17,6 +21,7 @@ export default function Screen() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const [isScreenOn, setIsScreenOn] = useState(false);
   const [centerShowsMetaquestGif, setCenterShowsMetaquestGif] = useState(false);
+  const [isPptSlideVisible, setIsPptSlideVisible] = useState(false);
 
   const stopCamera = useCallback(() => {
     const stream = cameraStreamRef.current;
@@ -122,8 +127,28 @@ export default function Screen() {
     return () => window.clearTimeout(id);
   }, [centerShowsMetaquestGif]);
 
+  useEffect(() => {
+    let hideTimeoutId: number | undefined;
+
+    const showPptSlide = () => {
+      setIsPptSlideVisible(true);
+      hideTimeoutId = window.setTimeout(() => {
+        setIsPptSlideVisible(false);
+      }, PPT_SLIDE_VISIBLE_MS);
+    };
+
+    const intervalId = window.setInterval(showPptSlide, PPT_SLIDE_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (hideTimeoutId !== undefined) {
+        window.clearTimeout(hideTimeoutId);
+      }
+    };
+  }, []);
+
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full max-w-none flex-row overflow-hidden bg-black">
+    <div className="relative flex h-[100dvh] min-h-0 w-full max-w-none flex-row overflow-hidden bg-black">
       {/* Ancho completo del viewport en cualquier tamaño de pantalla (sin bandas laterales) */}
       <section className="flex min-h-0 min-w-0 flex-[0_0_46%] flex-col bg-white px-[4%] py-[3%] pl-[5%]">
         <header className="shrink-0 pb-[3%]">
@@ -251,6 +276,19 @@ export default function Screen() {
           playsInline
         />
       </section>
+
+      {isPptSlideVisible && (
+        <div className="absolute inset-0 z-50 h-full w-full bg-black">
+          <Image
+            src="/pptSlide.png"
+            alt="Diapositiva promocional"
+            fill
+            className="object-cover"
+            sizes="100vw"
+            priority
+          />
+        </div>
+      )}
     </div>
   );
 }
