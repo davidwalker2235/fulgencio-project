@@ -178,9 +178,9 @@ variable "azure_openai_image_api_key" {
 }
 
 variable "azure_openai_image_api_version" {
-  description = "Versión de la API de generación de imágenes"
+  description = "Versión de la API de imágenes de Azure Foundry"
   type        = string
-  default     = "2025-04-01-preview"
+  default     = "preview"
 }
 
 variable "azure_openai_image_prompt" {
@@ -190,18 +190,24 @@ variable "azure_openai_image_prompt" {
 }
 
 variable "azure_openai_image_endpoint" {
-  description = "Endpoint de generación de imágenes (vacío = se construye desde azure_openai_endpoint)"
+  description = "Endpoint de generación de imágenes de Azure Foundry"
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.azure_openai_image_endpoint == "" || can(regex("^https://", var.azure_openai_image_endpoint))
+    error_message = "azure_openai_image_endpoint debe estar vacío o ser una URL HTTPS."
+  }
 }
 
 variable "azure_openai_image_edits_endpoint" {
-  description = "Endpoint de edición de imágenes para caricaturas (vacío = se construye desde azure_openai_endpoint)"
+  description = "Endpoint de edición de imágenes de Azure Foundry (vacío = se deriva del endpoint de generación)"
   type        = string
+  default     = ""
 
   validation {
-    condition     = can(regex("^https://", var.azure_openai_image_edits_endpoint))
-    error_message = "azure_openai_image_edits_endpoint debe ser una URL HTTPS."
+    condition     = var.azure_openai_image_edits_endpoint == "" || can(regex("^https://", var.azure_openai_image_edits_endpoint))
+    error_message = "azure_openai_image_edits_endpoint debe estar vacío o ser una URL HTTPS."
   }
 }
 

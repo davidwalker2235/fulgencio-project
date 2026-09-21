@@ -1,6 +1,6 @@
 # Backend - GPT Realtime Voice API
 
-Backend in Python with FastAPI. AI requests are routed through LiteLLM: the Realtime WebSocket uses the LiteLLM Proxy and image edits use the LiteLLM Python SDK.
+Backend in Python with FastAPI. Image edits call the Azure Foundry Images API directly. The legacy `azure_agent` voice mode still uses the LiteLLM Proxy; the normal `fulgencio_agent` mode connects to the external voice agent.
 
 ## Setup
 
@@ -21,8 +21,11 @@ pip install -r requirements.txt
 4. Configure environment variables in `back/.env`:
   - `MODEL_NAME=gpt-realtime-1.5`
   - `MODEL_IMAGE_NAME=gpt-image-2`
+  - `AZURE_OPENAI_IMAGE_API_KEY`: key for the Foundry image deployment
+  - `AZURE_OPENAI_IMAGE_ENDPOINT=https://<resource>.services.ai.azure.com/openai/v1/images/generations`
+  - `AZURE_OPENAI_IMAGE_EDITS_ENDPOINT=https://<resource>.services.ai.azure.com/openai/v1/images/edits`
+  - `AZURE_OPENAI_IMAGE_API_VERSION=preview`
   - `LITELLM_MASTER_KEY`: internal key used by the backend and Proxy
-  - Azure endpoint and provider keys used by `litellm_config.yaml`
 
 `docker-compose.yml` loads `back/.env` for local development and supplies a local internal key if `LITELLM_MASTER_KEY` is absent.
 
@@ -60,7 +63,7 @@ The server will be available at `http://localhost:8000`
 - **Realtime model**: `gpt-realtime-1.5`
 - **Image model**: `gpt-image-2`
 - **Realtime gateway**: LiteLLM Proxy on the internal port `4000`
-- **Image edits**: LiteLLM Python SDK against the configured image endpoint
+- **Image edits**: Direct multipart request to the Azure Foundry Images API
 - **Transcription**: Whisper-1
 
 ## Troubleshooting
@@ -68,7 +71,8 @@ The server will be available at `http://localhost:8000`
 ### Connection Issues
 - Verify that the `.env` file contains correct credentials
 - Check that the LiteLLM Proxy is running on port `4000`
-- Ensure the Azure deployment names match `MODEL_NAME` and `MODEL_IMAGE_NAME`
+- Ensure the Azure image deployment name matches `MODEL_IMAGE_NAME`
+- Ensure the Foundry image key and `/openai/v1/images/edits` endpoint are configured
 
 ### Audio Processing Errors
 - Verify audio format is PCM16 at 24kHz

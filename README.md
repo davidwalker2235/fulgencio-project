@@ -54,6 +54,10 @@ pip install -r requirements.txt
 ```
 MODEL_NAME=gpt-realtime-1.5
 MODEL_IMAGE_NAME=gpt-image-2
+AZURE_OPENAI_IMAGE_API_KEY=your-foundry-image-key
+AZURE_OPENAI_IMAGE_ENDPOINT=https://your-resource.services.ai.azure.com/openai/v1/images/generations
+AZURE_OPENAI_IMAGE_EDITS_ENDPOINT=https://your-resource.services.ai.azure.com/openai/v1/images/edits
+AZURE_OPENAI_IMAGE_API_VERSION=preview
 LITELLM_MASTER_KEY=sk-your-internal-proxy-key
 ```
 
@@ -162,7 +166,7 @@ The application includes a complete authentication system:
 ## Technical Details
 
 - Realtime uses LiteLLM Proxy with `gpt-realtime-1.5`.
-- Image edits use the LiteLLM Python SDK with `gpt-image-2`.
+- Image edits call the Azure Foundry Images API directly with `gpt-image-2`.
 - Audio is processed in PCM16 format at 24kHz.
 - Transcription is performed using Whisper-1.
 - Authentication credentials are stored in Firebase Realtime Database.

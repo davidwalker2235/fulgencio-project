@@ -72,7 +72,7 @@ jobs:
             TF_VAR_litellm_master_key
             TF_VAR_azure_openai_image_api_key
             TF_VAR_azure_openai_image_api_version
-            TF_VAR_azure_openai_image_edits_endpoint
+            TF_VAR_azure_openai_image_endpoint
             TF_VAR_firebase_database_url
             TF_VAR_firebase_service_account_json
             TF_VAR_azure_sql_connection_string

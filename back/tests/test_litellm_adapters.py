@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -49,49 +49,55 @@ class TestLiteLLMAdapters(unittest.TestCase):
 
         self.assertEqual(main.parse_generated_base64_list(response), ["first", "second"])
 
-    @patch.object(main.litellm, "image_edit")
-    def test_image_edit_uses_upstream_sdk_and_returns_base64(self, image_edit):
+    @patch.object(main.httpx, "Client")
+    def test_image_edit_uses_foundry_directly_and_returns_base64(self, client_class):
         source = base64.b64encode(b"image-bytes").decode("ascii")
-        image_edit.return_value = SimpleNamespace(
-            data=[SimpleNamespace(b64_json="generated-image")]
+        response = MagicMock()
+        response.json.return_value = {"data": [{"b64_json": "generated-image"}]}
+        client = client_class.return_value.__enter__.return_value
+        client.post.return_value = response
+        main.AZURE_OPENAI_IMAGE_ENDPOINT = (
+            "https://foundry.example/openai/v1/images/generations"
         )
-        main.AZURE_OPENAI_ENDPOINT = "https://proxy.example"
         main.AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = (
-            "https://proxy.example/images/edits"
+            "https://foundry.example/openai/v1/images/edits"
         )
-        main.AZURE_OPENAI_API_KEY = "upstream-key"
-        main.AZURE_OPENAI_IMAGE_API_VERSION = "2025-04-01-preview"
+        main.AZURE_OPENAI_IMAGE_API_KEY = "foundry-key"
+        main.AZURE_OPENAI_IMAGE_API_VERSION = "preview"
         main.MODEL_IMAGE_NAME = "gpt-image-2"
 
         result = main.call_image_generation_sync(source)
 
         self.assertEqual(result, ["generated-image"])
-        kwargs = image_edit.call_args.kwargs
-        self.assertEqual(kwargs["model"], "openai/gpt-image-2")
-        self.assertEqual(kwargs["api_base"], "https://proxy.example")
-        self.assertEqual(kwargs["api_key"], "upstream-key")
-        self.assertIsInstance(kwargs["client"], main.ImageAPIQueryHTTPHandler)
+        args, kwargs = client.post.call_args
+        self.assertEqual(
+            args[0], "https://foundry.example/openai/v1/images/edits"
+        )
+        self.assertEqual(kwargs["headers"], {"api-key": "foundry-key"})
+        self.assertEqual(kwargs["params"], {"api-version": "preview"})
+        self.assertEqual(kwargs["data"]["model"], "gpt-image-2")
+        self.assertEqual(kwargs["files"]["image"][2], "image/jpeg")
+        response.raise_for_status.assert_called_once_with()
 
     def test_image_edit_rejects_invalid_base64(self):
-        main.AZURE_OPENAI_ENDPOINT = "https://proxy.example"
+        main.AZURE_OPENAI_IMAGE_ENDPOINT = ""
         main.AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = (
-            "https://proxy.example/images/edits"
+            "https://foundry.example/openai/v1/images/edits"
         )
-        main.AZURE_OPENAI_API_KEY = "upstream-key"
+        main.AZURE_OPENAI_IMAGE_API_KEY = "foundry-key"
         with self.assertRaisesRegex(RuntimeError, "Base64"):
             main.call_image_generation_sync("not-base64")
 
-    def test_image_http_handler_adds_api_version_query(self):
-        handler = main.ImageAPIQueryHTTPHandler("2025-04-01-preview")
-        try:
-            with patch.object(main.HTTPHandler, "post", return_value=object()) as post:
-                handler.post(url="https://proxy.example/images/edits")
-            self.assertEqual(
-                post.call_args.kwargs["params"],
-                {"api-version": "2025-04-01-preview"},
-            )
-        finally:
-            handler.close()
+    def test_image_edits_endpoint_is_derived_from_generation_endpoint(self):
+        main.AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = ""
+        main.AZURE_OPENAI_IMAGE_ENDPOINT = (
+            "https://foundry.example/openai/v1/images/generations"
+        )
+
+        self.assertEqual(
+            main.get_image_edits_endpoint(),
+            "https://foundry.example/openai/v1/images/edits",
+        )
 
     def test_realtime_connects_to_litellm_proxy(self):
         websocket = SimpleNamespace(

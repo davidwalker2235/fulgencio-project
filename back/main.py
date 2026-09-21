@@ -2,7 +2,6 @@ import asyncio
 import base64
 import contextlib
 import datetime
-import io
 import json
 import os
 import random
@@ -16,7 +15,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import firebase_admin
-import litellm
+import httpx
 import pyodbc
 import websockets
 from dotenv import load_dotenv
@@ -24,7 +23,6 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import credentials, db
 from fulgencio_conversation import add_config_query, load_instructions
-from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from pydantic import BaseModel
 
 load_dotenv()
@@ -98,13 +96,17 @@ MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-2")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
 AZURE_OPENAI_IMAGE_API_KEY = os.getenv("AZURE_OPENAI_IMAGE_API_KEY", "")
+AZURE_OPENAI_IMAGE_ENDPOINT = os.getenv(
+    "AZURE_OPENAI_IMAGE_ENDPOINT",
+    "",
+).rstrip("/")
 AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
     "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT",
-    f"{AZURE_OPENAI_ENDPOINT}/images/edits" if AZURE_OPENAI_ENDPOINT else "",
-)
+    "",
+).rstrip("/")
 AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
     "AZURE_OPENAI_IMAGE_API_VERSION",
-    "2025-04-01-preview",
+    "preview",
 )
 AZURE_OPENAI_IMAGE_PROMPT = os.getenv(
     "AZURE_OPENAI_IMAGE_PROMPT",
@@ -132,46 +134,32 @@ def is_voice_agent_configured() -> bool:
     return bool(ERNI_AGENT_URL)
 
 
-def get_image_api_base() -> str:
-    """Convierte el endpoint completo de edits en el api_base esperado por LiteLLM."""
-    endpoint = AZURE_OPENAI_IMAGE_EDITS_ENDPOINT or AZURE_OPENAI_ENDPOINT
+def get_image_edits_endpoint() -> str:
+    """Obtiene el endpoint directo de edición de imágenes de Azure Foundry."""
+    endpoint = (
+        AZURE_OPENAI_IMAGE_EDITS_ENDPOINT
+        or AZURE_OPENAI_IMAGE_ENDPOINT
+        or AZURE_OPENAI_ENDPOINT
+    )
     if not endpoint:
         return ""
 
     parts = urllib.parse.urlsplit(endpoint)
     path = parts.path.rstrip("/")
-    if path.endswith("/images/edits"):
-        path = path[: -len("/images/edits")]
-    return urllib.parse.urlunsplit(
-        (parts.scheme, parts.netloc, path, "", "")
-    ).rstrip("/")
+    if path.endswith("/images/generations"):
+        path = f"{path[: -len('/images/generations')]}/images/edits"
+    elif not path.endswith("/images/edits"):
+        path = f"{path}/openai/v1/images/edits" if path else "/openai/v1/images/edits"
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
 def get_image_api_key() -> str:
-    """Usa la clave del Proxy upstream cuando comparte host con el endpoint general."""
-    image_host = urllib.parse.urlsplit(AZURE_OPENAI_IMAGE_EDITS_ENDPOINT).hostname
-    main_host = urllib.parse.urlsplit(AZURE_OPENAI_ENDPOINT).hostname
-    if image_host and image_host == main_host and AZURE_OPENAI_API_KEY:
-        return AZURE_OPENAI_API_KEY
-    return AZURE_OPENAI_IMAGE_API_KEY or AZURE_OPENAI_API_KEY
+    """Obtiene la clave del despliegue de imágenes de Azure Foundry."""
+    return AZURE_OPENAI_IMAGE_API_KEY
 
 
-def is_image_litellm_configured() -> bool:
-    return bool(get_image_api_base() and get_image_api_key() and MODEL_IMAGE_NAME)
-
-
-class ImageAPIQueryHTTPHandler(HTTPHandler):
-    """Añade api-version, que LiteLLM 1.86.0 no propaga en image_edit."""
-
-    def __init__(self, api_version: str):
-        super().__init__()
-        self.api_version = api_version
-
-    def post(self, url: str, **kwargs):
-        params = dict(kwargs.pop("params", None) or {})
-        if self.api_version:
-            params.setdefault("api-version", self.api_version)
-        return super().post(url=url, params=params, **kwargs)
+def is_image_foundry_configured() -> bool:
+    return bool(get_image_edits_endpoint() and get_image_api_key() and MODEL_IMAGE_NAME)
 
 
 def _sanitize_service_account_json(raw_json: str) -> str:
@@ -598,7 +586,7 @@ def extract_base64_payload(image_data: str) -> str:
 
 
 def parse_generated_base64_list(response: Any) -> list[str]:
-    """Extrae y deduplica los ``b64_json`` de una respuesta LiteLLM."""
+    """Extrae y deduplica los ``b64_json`` de una respuesta de imágenes."""
     data = getattr(response, "data", None)
     if data is None and isinstance(response, dict):
         data = response.get("data")
@@ -617,10 +605,10 @@ def parse_generated_base64_list(response: Any) -> list[str]:
 
 def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     """
-    Edita una imagen mediante LiteLLM SDK contra el endpoint OpenAI-compatible.
+    Edita una imagen directamente con el endpoint de Azure Foundry.
     """
-    if not is_image_litellm_configured():
-        raise RuntimeError("LiteLLM para imágenes no está configurado")
+    if not is_image_foundry_configured():
+        raise RuntimeError("Azure Foundry para imágenes no está configurado")
 
     raw_base64 = extract_base64_payload(photo_base64_or_data_url)
     if not raw_base64:
@@ -631,30 +619,45 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     except Exception as err:
         raise RuntimeError(f"Base64 de foto inválido: {err}") from err
 
-    image_file = io.BytesIO(image_bytes)
-    image_file.name = "image_to_edit.jpg"
-
-    image_http_client = ImageAPIQueryHTTPHandler(AZURE_OPENAI_IMAGE_API_VERSION)
     try:
-        response = litellm.image_edit(
-            model=f"openai/{MODEL_IMAGE_NAME}",
-            image=image_file,
-            prompt=AZURE_OPENAI_IMAGE_PROMPT,
-            n=1,
-            api_base=get_image_api_base(),
-            api_key=get_image_api_key(),
-            client=image_http_client,
-            timeout=90,
-        )
-    finally:
-        image_http_client.close()
+        with httpx.Client(timeout=httpx.Timeout(180.0)) as client:
+            response = client.post(
+                get_image_edits_endpoint(),
+                headers={"api-key": get_image_api_key()},
+                params=(
+                    {"api-version": AZURE_OPENAI_IMAGE_API_VERSION}
+                    if AZURE_OPENAI_IMAGE_API_VERSION
+                    else None
+                ),
+                data={
+                    "model": MODEL_IMAGE_NAME,
+                    "prompt": AZURE_OPENAI_IMAGE_PROMPT,
+                    "n": "1",
+                },
+                files={
+                    "image": (
+                        "image_to_edit.jpg",
+                        image_bytes,
+                        "image/jpeg",
+                    )
+                },
+            )
+            response.raise_for_status()
+            response_payload = response.json()
+    except httpx.HTTPStatusError as err:
+        status_code = err.response.status_code
+        raise RuntimeError(
+            f"Azure Foundry rechazó la generación de la caricatura ({status_code})"
+        ) from err
+    except (httpx.HTTPError, ValueError) as err:
+        raise RuntimeError("No se pudo generar la caricatura con Azure Foundry") from err
 
-    generated_base64_list = parse_generated_base64_list(response)
+    generated_base64_list = parse_generated_base64_list(response_payload)
     if generated_base64_list:
         print(f"Caricaturas generadas correctamente. Cantidad: {len(generated_base64_list)}")
         return generated_base64_list
 
-    raise RuntimeError("LiteLLM devolvió una respuesta de imagen sin b64_json")
+    raise RuntimeError("Azure Foundry devolvió una respuesta de imagen sin b64_json")
 
 
 class RegisterUserRequest(BaseModel):
@@ -823,7 +826,7 @@ async def health():
     return {
         "status": "healthy",
         "litellm_proxy_configured": is_litellm_configured(),
-        "image_model_configured": is_image_litellm_configured(),
+        "image_model_configured": is_image_foundry_configured(),
     }
 
 

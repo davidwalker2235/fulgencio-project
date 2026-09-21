@@ -12,7 +12,7 @@ La aplicación está dividida en `front/` (Next.js, React y TypeScript), `back/`
 2. La autenticación se conserva en `localStorage` mediante `useAuth.ts`.
 3. Las páginas `/photo/form`, `/photo/capture` y `/photo/code` recopilan datos, foto y número de usuario.
 4. `POST /photo/register` registra el usuario en la tabla `users` de Azure SQL y devuelve `orderNumber`.
-5. `POST /photo/generate-caricature` envía la foto a `gpt-image-2` mediante LiteLLM y guarda la imagen base64 en Azure SQL.
+5. `POST /photo/generate-caricature` envía la foto directamente al endpoint de edición de `gpt-image-2` en Azure Foundry y guarda la imagen base64 en Azure SQL.
 6. `POST /robot/submit-number` comprueba que el robot esté libre, busca el usuario en Azure SQL y publica `robot_action` en Firebase.
 7. El robot consume `robot_action` y actualiza `status`. El backend escucha ese nodo y reenvía cambios por WebSocket como `firebase.status.changed`.
 8. La conversación de voz se ejecuta por `WS /ws` mientras el robot trabaja. `useVoiceConversation.ts` gestiona audio, transcripción, estado y suscripciones Firebase.
@@ -98,7 +98,7 @@ npm run dev
 
 Producción local: `docker compose up --build`. El backend escucha en 8000; el frontend se publica en 8080 y resuelve dinámicamente el hostname del backend para WebSocket.
 
-Variables importantes: `MODEL_NAME`, `MODEL_IMAGE_NAME`, `VOICE_AGENT_TYPE`, URLs de LiteLLM y del agente externo, credenciales Firebase, `AZURE_SQL_CONNECTION_STRING` y claves Azure/LiteLLM. No guardar secretos en el repositorio.
+Variables importantes: `MODEL_NAME`, `MODEL_IMAGE_NAME`, `VOICE_AGENT_TYPE`, URL del agente externo, `AZURE_OPENAI_IMAGE_ENDPOINT`, `AZURE_OPENAI_IMAGE_EDITS_ENDPOINT`, `AZURE_OPENAI_IMAGE_API_KEY`, credenciales Firebase y `AZURE_SQL_CONNECTION_STRING`. No guardar secretos en el repositorio.
 
 ## Reglas para cambios
 
