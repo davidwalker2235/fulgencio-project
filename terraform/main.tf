@@ -210,7 +210,7 @@ resource "azurerm_container_app" "backend" {
       }
 
       env {
-        name  = "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT"
+        name = "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT"
         value = var.azure_openai_image_edits_endpoint != "" ? var.azure_openai_image_edits_endpoint : (
           var.azure_openai_image_endpoint != "" ? replace(var.azure_openai_image_endpoint, "/images/generations", "/images/edits") : "${trimspace(trim(var.azure_openai_endpoint, "/"))}/openai/v1/images/edits"
         )
