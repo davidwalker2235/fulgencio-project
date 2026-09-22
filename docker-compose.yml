@@ -54,6 +54,7 @@ services:
       - "8080:3000"
     environment:
       - NODE_ENV=production
+      - BACKEND_API_URL=http://backend:8000
       # La URL del WebSocket se resuelve dinámicamente en el cliente
       # usando window.location.hostname, así que no necesita configuración aquí
     depends_on:

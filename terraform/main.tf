@@ -454,6 +454,11 @@ resource "azurerm_container_app" "frontend" {
         value = "wss://${azurerm_container_app.backend.ingress[0].fqdn}/ws"
       }
 
+      env {
+        name  = "BACKEND_API_URL"
+        value = "https://${azurerm_container_app.backend.ingress[0].fqdn}"
+      }
+
       startup_probe {
         transport               = "HTTP"
         port                    = 3000

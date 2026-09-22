@@ -1,6 +1,16 @@
+const DEFAULT_BACKEND_API_URL =
+  process.env.NODE_ENV === "production"
+    ? "http://backend:8000"
+    : "http://localhost:8000";
+
+const BACKEND_API_URL = (
+  process.env.BACKEND_API_URL ?? DEFAULT_BACKEND_API_URL
+).replace(/\/$/, "");
+
 const TARGET_API_URL =
   process.env.ROBOT_AGENT_NUMERIC_CODE_API_URL ??
-  `${process.env.BACKEND_API_URL ?? (process.env.NODE_ENV === "production" ? "http://backend:8000" : "http://localhost:8000")}/robot/submit-number`;
+  `${BACKEND_API_URL}/robot/submit-number`;
+
 export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("user_id")?.trim();
