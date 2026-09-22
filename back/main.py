@@ -1223,7 +1223,7 @@ async def handle_realtime_connection(realtime_ws, websocket):
         "type": "session.update",
         "session": {
             "modalities": ["text", "audio"],
-            "instructions": "You are a friendly and helpful voice assistant. Speak only English or German. Use German by default and switch to English only when the user explicitly asks for it. Keep the same language across state changes. Say only: 'Hallo, wie lautet deine Nummer, damit ich dich identifizieren kann?' Do not say anything else.",
+            "instructions": "You are a friendly and helpful voice assistant. Use German by default. Switch to any other language only when the user explicitly asks for it. Keep the same language across state changes. Say only: 'Hallo, ich bin Fulgencio. Wie lautet deine Nummer?' Do not say anything else.",
             "voice": "alloy",
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
