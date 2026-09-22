@@ -713,11 +713,11 @@ async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) ->
     realtime_url = f"{LITELLM_PROXY_WS_URL}/v1/realtime?model={MODEL_NAME}"
 
     summary_prompt = (
-        "Eres un asistente que resume conversaciones.\n"
-        "Debes usar EXCLUSIVAMENTE los mensajes del usuario.\n"
-        "No incluyas respuestas del asistente ni inventes información.\n"
-        "Devuelve un resumen breve y claro en español (2-4 frases).\n\n"
-        "Mensajes del usuario:\n"
+        "You summarize conversations.\n"
+        "Use EXCLUSIVELY the user's messages.\n"
+        "Do not include assistant responses or invent information.\n"
+        "Return a brief, clear summary in English (2-4 sentences).\n\n"
+        "User messages:\n"
         + "\n".join(f"- {msg}" for msg in user_messages)
     )
 
@@ -728,8 +728,8 @@ async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) ->
                 "session": {
                     "modalities": ["text"],
                     "instructions": (
-                        "Resume únicamente lo que dijo el usuario. "
-                        "No uses información del asistente."
+                        "Summarize only what the user said. "
+                        "Do not use information from the assistant."
                     ),
                 },
             }
@@ -1223,7 +1223,7 @@ async def handle_realtime_connection(realtime_ws, websocket):
         "type": "session.update",
         "session": {
             "modalities": ["text", "audio"],
-            "instructions": "Eres un asistente de voz amigable y útil. Habla con acento español de España. Tan solo di la frase 'Hola, cual es tu número para saber quién eres, por favor'. No digas nada más",
+            "instructions": "You are a friendly and helpful voice assistant. Speak only English or German. Use English by default and switch to German only when the user asks for it or clearly speaks German. Say only: 'Hello, what is your number so I can identify you, please.' Do not say anything else.",
             "voice": "alloy",
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
