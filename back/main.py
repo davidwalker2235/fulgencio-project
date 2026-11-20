@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 import firebase_admin
 import httpx
-import pyodbc
+import psycopg
 import websockets
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -26,6 +26,12 @@ from fulgencio_conversation import add_config_query, load_instructions
 from pydantic import BaseModel
 
 load_dotenv()
+
+# Windows PowerShell may use cp1252; startup diagnostics include Unicode symbols.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 class VoiceAgent(str, Enum):
@@ -84,32 +90,19 @@ FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
 FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
 FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv("FIREBASE_SERVICE_ACCOUNT_FILE", "")
 
-# Azure SQL (datos de users y caricatura)
-AZURE_SQL_CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
-AZURE_SQL_CONNECT_TIMEOUT_SECONDS = int(os.getenv("AZURE_SQL_CONNECT_TIMEOUT_SECONDS", "60"))
-AZURE_SQL_CONNECT_RETRY_ATTEMPTS = int(os.getenv("AZURE_SQL_CONNECT_RETRY_ATTEMPTS", "5"))
-AZURE_SQL_CONNECT_RETRY_BASE_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_RETRY_BASE_SECONDS", "1.0"))
-AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS = float(os.getenv("AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS", "45"))
+# PostgreSQL (datos de users y caricatura)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+POSTGRES_CONNECT_TIMEOUT_SECONDS = int(os.getenv("POSTGRES_CONNECT_TIMEOUT_SECONDS", "60"))
+POSTGRES_CONNECT_RETRY_ATTEMPTS = int(os.getenv("POSTGRES_CONNECT_RETRY_ATTEMPTS", "5"))
+POSTGRES_CONNECT_RETRY_BASE_SECONDS = float(os.getenv("POSTGRES_CONNECT_RETRY_BASE_SECONDS", "1.0"))
+POSTGRES_CONNECT_MAX_TOTAL_SECONDS = float(os.getenv("POSTGRES_CONNECT_MAX_TOTAL_SECONDS", "45"))
 
 # Configuración de generación de imágenes (caricaturas)
-MODEL_IMAGE_NAME = os.getenv("MODEL_IMAGE_NAME", "gpt-image-2")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_IMAGE_API_KEY = os.getenv("AZURE_OPENAI_IMAGE_API_KEY", "")
-AZURE_OPENAI_IMAGE_ENDPOINT = os.getenv(
-    "AZURE_OPENAI_IMAGE_ENDPOINT",
-    "",
-).rstrip("/")
-AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = os.getenv(
-    "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT",
-    "",
-).rstrip("/")
-AZURE_OPENAI_IMAGE_API_VERSION = os.getenv(
-    "AZURE_OPENAI_IMAGE_API_VERSION",
-    "preview",
-)
-AZURE_OPENAI_IMAGE_PROMPT = os.getenv(
-    "AZURE_OPENAI_IMAGE_PROMPT",
+LITELLM_IMAGE_API_BASE = os.getenv("LITELLM_IMAGE_API_BASE", "").strip().rstrip("/")
+LITELLM_IMAGE_API_KEY = os.getenv("LITELLM_IMAGE_API_KEY", "").strip()
+LITELLM_IMAGE_MODEL = os.getenv("LITELLM_IMAGE_MODEL", "gpt-image-2").strip()
+IMAGE_GENERATION_PROMPT = os.getenv(
+    "IMAGE_GENERATION_PROMPT",
     "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible. Avoid grey colors, all lines must be black. The background should be white and empty, with no additional elements or distractions. The final image should be a clean and simple line drawing that captures the essence of the caricature in a minimalist way. This picture will be drawn by a robot arm so the lines should be connected together avoiding unnecessary gaps."
 )
 firebase_app: Optional[firebase_admin.App] = None
@@ -134,32 +127,23 @@ def is_voice_agent_configured() -> bool:
     return bool(ERNI_AGENT_URL)
 
 
-def get_image_edits_endpoint() -> str:
-    """Obtiene el endpoint directo de edición de imágenes de Azure Foundry."""
-    endpoint = (
-        AZURE_OPENAI_IMAGE_EDITS_ENDPOINT
-        or AZURE_OPENAI_IMAGE_ENDPOINT
-        or AZURE_OPENAI_ENDPOINT
-    )
-    if not endpoint:
+def get_litellm_image_edits_endpoint() -> str:
+    """Build the LiteLLM OpenAI-compatible image edits URL from its base URL."""
+    if not LITELLM_IMAGE_API_BASE:
         return ""
-
-    parts = urllib.parse.urlsplit(endpoint)
-    path = parts.path.rstrip("/")
-    if path.endswith("/images/generations"):
-        path = f"{path[: -len('/images/generations')]}/images/edits"
-    elif not path.endswith("/images/edits"):
-        path = f"{path}/openai/v1/images/edits" if path else "/openai/v1/images/edits"
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+    base_url = LITELLM_IMAGE_API_BASE
+    if base_url.endswith("/v1"):
+        return f"{base_url}/images/edits"
+    return f"{base_url}/v1/images/edits"
 
 
-def get_image_api_key() -> str:
-    """Obtiene la clave del despliegue de imágenes de Azure Foundry."""
-    return AZURE_OPENAI_IMAGE_API_KEY
-
-
-def is_image_foundry_configured() -> bool:
-    return bool(get_image_edits_endpoint() and get_image_api_key() and MODEL_IMAGE_NAME)
+def is_image_generation_configured() -> bool:
+    """Whether the LiteLLM image gateway URL, virtual key, and model are set."""
+    return bool(
+        get_litellm_image_edits_endpoint()
+        and LITELLM_IMAGE_API_KEY
+        and LITELLM_IMAGE_MODEL
+    )
 
 
 def _sanitize_service_account_json(raw_json: str) -> str:
@@ -270,204 +254,93 @@ def setup_firebase_status_listener() -> None:
         print(f"⚠️ Error configurando listener de status: {e}")
 
 
-def _get_sql_server_driver_name() -> Optional[str]:
-    """Devuelve el nombre del primer controlador ODBC para SQL Server disponible (18, 17 o 13)."""
-    candidates = [
-        "ODBC Driver 18 for SQL Server",
-        "ODBC Driver 17 for SQL Server",
-        "ODBC Driver 13 for SQL Server",
-    ]
-    installed = pyodbc.drivers()
-    for name in candidates:
-        if name in installed:
-            return name
-    return None
-
-
-def _normalize_odbc_connection_string(raw: str) -> str:
-    """Normaliza atributos para ODBC Driver 17/18 y aliases comunes de ADO.NET."""
-    s = raw
-    s = s.replace("Encrypt=True", "Encrypt=yes").replace("Encrypt=False", "Encrypt=no")
-    s = s.replace("TrustServerCertificate=True", "TrustServerCertificate=yes").replace("TrustServerCertificate=False", "TrustServerCertificate=no")
-    # ADO.NET usa "Initial Catalog"; ODBC usa "Database"
-    if "Initial Catalog=" in s and "DATABASE=" not in s.upper():
-        s = s.replace("Initial Catalog=", "Database=")
-    # ADO.NET usa MultipleActiveResultSets; en ODBC se usa MARS_Connection
-    if "MultipleActiveResultSets=True" in s:
-        s = s.replace("MultipleActiveResultSets=True", "MARS_Connection=yes")
-    if "MultipleActiveResultSets=False" in s:
-        s = s.replace("MultipleActiveResultSets=False", "MARS_Connection=no")
-    # "Persist Security Info" no es relevante para pyodbc; eliminarlo evita warnings.
-    s = s.replace("Persist Security Info=False;", "")
-    s = s.replace("Persist Security Info=True;", "")
-    # Driver 17 puede no reconocer "User ID" / "Password"; usar UID / PWD
-    if "User ID=" in s and "UID=" not in s.upper():
-        s = s.replace("User ID=", "UID=")
-    if "Password=" in s and "PWD=" not in s.upper():
-        s = s.replace("Password=", "PWD=")
-    return s
-
-
-def _get_azure_sql_connection_string() -> str:
-    """Devuelve la connection string con Driver para pyodbc si no está presente.
-    En .env puede ir entre comillas dobles (p. ej. por password con !); se eliminan aquí.
-    """
-    raw = (AZURE_SQL_CONNECTION_STRING or "").strip()
-    if not raw:
-        return ""
-    if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
-        raw = raw[1:-1]
-    raw = _normalize_odbc_connection_string(raw)
-    if "Driver=" in raw or "DRIVER=" in raw:
-        return raw
-    driver = _get_sql_server_driver_name()
-    if not driver:
-        return "Driver={ODBC Driver 18 for SQL Server};" + raw
-    return f"Driver={{{driver}}};" + raw
-
-
-def _is_transient_sql_connect_error(err: Exception) -> bool:
-    """Detecta errores transitorios de conexión/login timeout en Azure SQL."""
-    msg = str(err).lower()
-    transient_markers = (
-        "hyt00",  # login timeout expired
-        "08001",  # unable to connect / transport errors
-        "08s01",  # communication link failure
-        "40613",  # Database is not currently available
-        "40197",  # Service has encountered an error processing request
-        "40501",  # Service busy
-        "49918",  # Cannot process request
-        "49919",
-        "49920",
-        "10928",  # Resource limit
-        "10929",
-        "not currently available",
-        "service is currently busy",
-        "timed out",
-        "timeout",
-        "tcp provider",
-        "connection is busy",
-    )
-    return any(marker in msg for marker in transient_markers)
-
-
-def _open_azure_sql_connection_with_retry(conn_str: str):
-    """Abre conexión SQL con retries y backoff para fallos transitorios."""
-    attempts = max(1, AZURE_SQL_CONNECT_RETRY_ATTEMPTS)
-    started_at = time.monotonic()
-    for attempt in range(1, attempts + 1):
-        try:
-            return pyodbc.connect(conn_str, timeout=AZURE_SQL_CONNECT_TIMEOUT_SECONDS)
-        except pyodbc.Error as err:
-            elapsed = time.monotonic() - started_at
-            is_transient = _is_transient_sql_connect_error(err)
-            if attempt >= attempts or not is_transient or elapsed >= AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS:
-                raise
-            sleep_seconds = AZURE_SQL_CONNECT_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
-            # Jitter para evitar colisiones de reintentos simultáneos.
-            sleep_seconds += random.uniform(0, AZURE_SQL_CONNECT_RETRY_BASE_SECONDS)
-            if elapsed + sleep_seconds > AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS:
-                sleep_seconds = max(0.1, AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS - elapsed)
-            print(
-                f"⚠️ Conexión Azure SQL falló (intento {attempt}/{attempts}): {err}. "
-                f"Reintentando en {sleep_seconds:.1f}s..."
-            )
-            time.sleep(sleep_seconds)
+def _is_transient_postgres_error(error: Exception) -> bool:
+    """Return whether a PostgreSQL connection error is likely temporary."""
+    message = str(error).lower()
+    return any(marker in message for marker in (
+        "connection refused", "connection reset", "could not connect",
+        "server closed the connection", "timeout", "timed out",
+        "temporarily unavailable", "too many connections",
+    ))
 
 
 @contextlib.contextmanager
-def get_azure_sql_connection():
-    """Context manager para obtener una conexión a Azure SQL."""
-    conn_str = _get_azure_sql_connection_string()
-    if not conn_str:
-        raise RuntimeError("AZURE_SQL_CONNECTION_STRING no configurado")
-    conn = _open_azure_sql_connection_with_retry(conn_str)
+def get_postgres_connection():
+    """Open a PostgreSQL transaction, retrying transient connection failures."""
+    if not DATABASE_URL.strip():
+        raise RuntimeError("DATABASE_URL no configurado")
+    attempts = max(1, POSTGRES_CONNECT_RETRY_ATTEMPTS)
+    started_at = time.monotonic()
+    connection = None
+    for attempt in range(1, attempts + 1):
+        try:
+            connection = psycopg.connect(
+                DATABASE_URL, connect_timeout=POSTGRES_CONNECT_TIMEOUT_SECONDS
+            )
+            break
+        except psycopg.OperationalError as error:
+            elapsed = time.monotonic() - started_at
+            if (attempt >= attempts or not _is_transient_postgres_error(error)
+                    or elapsed >= POSTGRES_CONNECT_MAX_TOTAL_SECONDS):
+                raise
+            delay = POSTGRES_CONNECT_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+            delay += random.uniform(0, POSTGRES_CONNECT_RETRY_BASE_SECONDS)
+            delay = min(delay, max(0.1, POSTGRES_CONNECT_MAX_TOTAL_SECONDS - elapsed))
+            print(f"⚠️ PostgreSQL no disponible (intento {attempt}/{attempts}); reintentando en {delay:.1f}s")
+            time.sleep(delay)
+    if connection is None:  # pragma: no cover
+        raise RuntimeError("No se pudo conectar con PostgreSQL")
     try:
-        yield conn
-        conn.commit()
+        yield connection
+        connection.commit()
     except Exception:
-        conn.rollback()
+        connection.rollback()
         raise
     finally:
-        conn.close()
+        connection.close()
 
 
-def init_azure_sql_users_table() -> None:
-    """Crea la tabla users si no existe."""
-    if not _get_azure_sql_connection_string():
+def init_postgres_users_table() -> None:
+    """Create the users table and idempotency index if they do not exist."""
+    if not DATABASE_URL.strip():
         return
-    try:
-        with get_azure_sql_connection() as conn:
-            cursor = conn.cursor()
+    with get_postgres_connection() as connection:
+        with connection.cursor() as cursor:
             cursor.execute("""
-                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'users')
-                CREATE TABLE users (
-                    id INT IDENTITY(1,1) PRIMARY KEY,
-                    full_name NVARCHAR(500) NOT NULL,
-                    email NVARCHAR(500) NOT NULL,
-                    [timestamp] NVARCHAR(100) NOT NULL,
-                    real_name NVARCHAR(500) NULL,
-                    work_name NVARCHAR(500) NULL,
-                    request_id NVARCHAR(64) NULL,
-                    caricature NVARCHAR(MAX) NULL,
-                    caricature_timestamp NVARCHAR(100) NULL
+                CREATE TABLE IF NOT EXISTS users (
+                    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    full_name VARCHAR(500) NOT NULL,
+                    email VARCHAR(500) NOT NULL,
+                    timestamp VARCHAR(100) NOT NULL,
+                    real_name VARCHAR(500),
+                    work_name VARCHAR(500),
+                    request_id VARCHAR(64),
+                    caricature TEXT,
+                    caricature_timestamp VARCHAR(100)
                 );
             """)
             cursor.execute("""
-                IF COL_LENGTH('users', 'real_name') IS NULL
-                ALTER TABLE users ADD real_name NVARCHAR(500) NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_users_request_id
+                    ON users (request_id) WHERE request_id IS NOT NULL;
             """)
-            cursor.execute("""
-                IF COL_LENGTH('users', 'work_name') IS NULL
-                ALTER TABLE users ADD work_name NVARCHAR(500) NULL;
-            """)
-            cursor.execute("""
-                IF COL_LENGTH('users', 'request_id') IS NULL
-                ALTER TABLE users ADD request_id NVARCHAR(64) NULL;
-            """)
-            cursor.execute("""
-                IF EXISTS (
-                    SELECT 1
-                    FROM sys.columns
-                    WHERE object_id = OBJECT_ID('users')
-                      AND name = 'photo'
-                )
-                ALTER TABLE users DROP COLUMN photo;
-            """)
-            cursor.execute("""
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM sys.indexes
-                    WHERE name = 'UX_users_request_id'
-                      AND object_id = OBJECT_ID('users')
-                )
-                CREATE UNIQUE INDEX UX_users_request_id
-                    ON users (request_id)
-                    WHERE request_id IS NOT NULL;
-            """)
-            print("✅ Tabla users de Azure SQL verificada/creada")
-    except Exception as err:
-        print(f"⚠️ Error inicializando tabla users en Azure SQL: {err}")
+    print("✅ Tabla users de PostgreSQL verificada/creada")
 
 
-def warm_up_azure_sql_connection() -> None:
-    """
-    Warm-up de conexión para reducir fallos en el primer request.
-    """
-    if not _get_azure_sql_connection_string():
+def warm_up_postgres_connection() -> None:
+    """Warm up PostgreSQL connection and report recoverable startup issues."""
+    if not DATABASE_URL.strip():
         return
     try:
-        with get_azure_sql_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1;")
-            cursor.fetchone()
-        print("✅ Warm-up Azure SQL completado")
-    except Exception as err:
-        # No bloquea el arranque; los endpoints volverán a reintentar al conectar.
-        print(f"⚠️ Warm-up Azure SQL falló: {err}")
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1;")
+                cursor.fetchone()
+        print("✅ Warm-up PostgreSQL completado")
+    except Exception as error:
+        print(f"⚠️ Warm-up PostgreSQL falló: {error}")
 
 
-def insert_user_azure_sql(
+def insert_user_postgres(
     full_name: str,
     email: str,
     real_name: Optional[str] = None,
@@ -475,14 +348,13 @@ def insert_user_azure_sql(
     request_id: Optional[str] = None,
 ) -> int:
     """
-    Inserta un usuario en Azure SQL y devuelve el id (order number).
+    Inserta un usuario en PostgreSQL y devuelve el id (order number).
     """
-    with get_azure_sql_connection() as conn:
-        cursor = conn.cursor()
-        try:
+    with get_postgres_connection() as conn:
+        with conn.cursor() as cursor:
             if request_id:
                 cursor.execute(
-                    "SELECT id FROM users WHERE request_id = ?;",
+                    "SELECT id FROM users WHERE request_id = %s;",
                     (request_id,),
                 )
                 existing = cursor.fetchone()
@@ -490,9 +362,9 @@ def insert_user_azure_sql(
                     return int(existing[0])
             cursor.execute(
                 """
-                INSERT INTO users (full_name, email, [timestamp], real_name, work_name, request_id)
-                OUTPUT INSERTED.id
-                VALUES (?, ?, ?, ?, ?, ?);
+                INSERT INTO users (full_name, email, timestamp, real_name, work_name, request_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id;
                 """,
                 (
                     full_name.strip(),
@@ -504,26 +376,23 @@ def insert_user_azure_sql(
                 ),
             )
             row = cursor.fetchone()
-        except pyodbc.Error as e:
-            print(f"❌ pyodbc.Error: {e}; args={getattr(e, 'args', None)}")
-            raise
         if row is None or row[0] is None:
             raise RuntimeError("No se obtuvo id tras INSERT en users")
         return int(float(row[0]))
 
 
-def update_user_caricature_azure_sql(order_number: str, caricature_base64: str) -> bool:
+def update_user_caricature_postgres(order_number: str, caricature_base64: str) -> bool:
     """
-    Actualiza la caricatura (una sola imagen base64) del usuario en Azure SQL.
+    Actualiza la caricatura (una sola imagen base64) del usuario en PostgreSQL.
     """
     try:
-        with get_azure_sql_connection() as conn:
+        with get_postgres_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
                 UPDATE users
-                SET caricature = ?, caricature_timestamp = ?
-                WHERE id = ?;
+                SET caricature = %s, caricature_timestamp = %s
+                WHERE id = %s;
                 """,
                 (
                     caricature_base64,
@@ -533,12 +402,12 @@ def update_user_caricature_azure_sql(order_number: str, caricature_base64: str) 
             )
             return cursor.rowcount > 0
     except Exception as err:
-        print(f"❌ Error actualizando caricature en Azure SQL para {order_number}: {err}")
+        print(f"❌ Error actualizando caricature en PostgreSQL para {order_number}: {err}")
         return False
 
 
 def submit_user_number_to_firebase(user_id: str) -> dict[str, Any]:
-    """Busca un usuario en Azure SQL y publica su acción de dibujo en Firebase."""
+    """Busca un usuario en PostgreSQL y publica su acción de dibujo en Firebase."""
     if firebase_app is None:
         raise RuntimeError("Firebase Admin no está inicializado")
     robot_status = db.reference("status").get()
@@ -548,11 +417,11 @@ def submit_user_number_to_firebase(user_id: str) -> dict[str, Any]:
         numeric_id = int(user_id.strip())
     except (AttributeError, ValueError):
         raise ValueError("user_id debe ser un número entero")
-    with get_azure_sql_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""SELECT id, full_name, email, [timestamp], real_name, work_name,
-                   request_id, caricature, caricature_timestamp FROM users WHERE id = ?;""", (numeric_id,))
-        row = cursor.fetchone()
+    with get_postgres_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""SELECT id, full_name, email, timestamp, real_name, work_name,
+                       request_id, caricature, caricature_timestamp FROM users WHERE id = %s;""", (numeric_id,))
+            row = cursor.fetchone()
     if row is None:
         raise LookupError("Usuario no encontrado")
     fields = ("id", "full_name", "email", "timestamp", "real_name", "work_name", "request_id", "caricature", "caricature_timestamp")
@@ -605,10 +474,10 @@ def parse_generated_base64_list(response: Any) -> list[str]:
 
 def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     """
-    Edita una imagen directamente con el endpoint de Azure Foundry.
+    Edit an uploaded photo through the LiteLLM OpenAI-compatible images API.
     """
-    if not is_image_foundry_configured():
-        raise RuntimeError("Azure Foundry para imágenes no está configurado")
+    if not is_image_generation_configured():
+        raise RuntimeError("LiteLLM para imágenes no está configurado")
 
     raw_base64 = extract_base64_payload(photo_base64_or_data_url)
     if not raw_base64:
@@ -622,16 +491,11 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
     try:
         with httpx.Client(timeout=httpx.Timeout(180.0)) as client:
             response = client.post(
-                get_image_edits_endpoint(),
-                headers={"api-key": get_image_api_key()},
-                params=(
-                    {"api-version": AZURE_OPENAI_IMAGE_API_VERSION}
-                    if AZURE_OPENAI_IMAGE_API_VERSION
-                    else None
-                ),
+                get_litellm_image_edits_endpoint(),
+                headers={"Authorization": f"Bearer {LITELLM_IMAGE_API_KEY}"},
                 data={
-                    "model": MODEL_IMAGE_NAME,
-                    "prompt": AZURE_OPENAI_IMAGE_PROMPT,
+                    "model": LITELLM_IMAGE_MODEL,
+                    "prompt": IMAGE_GENERATION_PROMPT,
                     "n": "1",
                 },
                 files={
@@ -646,18 +510,27 @@ def call_image_generation_sync(photo_base64_or_data_url: str) -> list[str]:
             response_payload = response.json()
     except httpx.HTTPStatusError as err:
         status_code = err.response.status_code
+        try:
+            error_body = err.response.json()
+            error_detail = json.dumps(error_body, ensure_ascii=False)[:600]
+        except ValueError:
+            error_detail = err.response.text[:600]
         raise RuntimeError(
-            f"Azure Foundry rechazó la generación de la caricatura ({status_code})"
+            f"LiteLLM rechazó la generación de la caricatura (HTTP {status_code}): {error_detail}"
         ) from err
-    except (httpx.HTTPError, ValueError) as err:
-        raise RuntimeError("No se pudo generar la caricatura con Azure Foundry") from err
+    except httpx.HTTPError as err:
+        raise RuntimeError(
+            f"No se pudo conectar con LiteLLM para generar la caricatura ({type(err).__name__})"
+        ) from err
+    except ValueError as err:
+        raise RuntimeError("LiteLLM devolvió una respuesta JSON no válida") from err
 
     generated_base64_list = parse_generated_base64_list(response_payload)
     if generated_base64_list:
         print(f"Caricaturas generadas correctamente. Cantidad: {len(generated_base64_list)}")
         return generated_base64_list
 
-    raise RuntimeError("Azure Foundry devolvió una respuesta de imagen sin b64_json")
+    raise RuntimeError("LiteLLM devolvió una respuesta de imagen sin b64_json")
 
 
 class RegisterUserRequest(BaseModel):
@@ -799,13 +672,13 @@ async def summarize_user_messages_with_gpt_realtime(user_messages: list[str]) ->
 
 @app.on_event("startup")
 async def on_startup():
-    """Inicializa Firebase, listener de status y tabla Azure SQL al arrancar."""
+    """Inicializa Firebase, listener de status y tabla PostgreSQL al arrancar."""
     global main_event_loop
     main_event_loop = asyncio.get_running_loop()
     initialize_firebase_admin()
     setup_firebase_status_listener()
-    warm_up_azure_sql_connection()
-    init_azure_sql_users_table()
+    init_postgres_users_table()
+    warm_up_postgres_connection()
 
 
 @app.get("/")
@@ -826,7 +699,7 @@ async def health():
     return {
         "status": "healthy",
         "litellm_proxy_configured": is_litellm_configured(),
-        "image_model_configured": is_image_foundry_configured(),
+        "image_model_configured": is_image_generation_configured(),
     }
 
 
@@ -856,12 +729,12 @@ async def summarize_transcriptions(payload: TranscriptionSummaryRequest):
 @app.post("/photo/register")
 async def register_user(payload: RegisterUserRequest):
     """
-    Registra un usuario en Azure SQL y devuelve el número de orden (id).
+    Registra un usuario en PostgreSQL y devuelve el número de orden (id).
     """
-    if not _get_azure_sql_connection_string():
+    if not DATABASE_URL.strip():
         raise HTTPException(
             status_code=503,
-            detail="AZURE_SQL_CONNECTION_STRING no configurado",
+            detail="DATABASE_URL no configurado",
         )
     full_name = (payload.fullName or "").strip()
     email = (payload.email or "").strip()
@@ -875,7 +748,7 @@ async def register_user(payload: RegisterUserRequest):
     request_id = (payload.requestId or "").strip() or None
     try:
         order_number = await asyncio.to_thread(
-            insert_user_azure_sql,
+            insert_user_postgres,
             full_name,
             email,
             real_name,
@@ -883,16 +756,16 @@ async def register_user(payload: RegisterUserRequest):
             request_id,
         )
         return {"orderNumber": str(order_number)}
-    except pyodbc.Error as err:
-        print(f"❌ Error registrando usuario en Azure SQL: {err}")
-        if _is_transient_sql_connect_error(err):
+    except psycopg.Error as err:
+        print(f"❌ Error registrando usuario en PostgreSQL: {err}")
+        if isinstance(err, psycopg.OperationalError) or _is_transient_postgres_error(err):
             raise HTTPException(
                 status_code=503,
-                detail="Azure SQL temporalmente no disponible. Reintentando puede resolverlo.",
+                detail="PostgreSQL temporalmente no disponible. Reintentar puede resolverlo.",
             )
         raise HTTPException(status_code=500, detail=str(err))
     except Exception as err:
-        print(f"❌ Error registrando usuario en Azure SQL: {err}")
+        print(f"❌ Error registrando usuario en PostgreSQL: {err}")
         raise HTTPException(status_code=500, detail=str(err))
 
 
@@ -916,7 +789,7 @@ async def submit_number(payload: NumericUserRequest):
 @app.post("/photo/generate-caricature")
 async def generate_caricature(payload: CaricatureGenerationRequest):
     """
-    Genera una caricatura desde la foto con gpt-image-2 y la guarda en Azure SQL
+    Genera una caricatura desde la foto con gpt-image-2 y la guarda en PostgreSQL
     (un solo valor base64, no array).
     """
     order_number = payload.orderNumber.strip()
@@ -931,7 +804,7 @@ async def generate_caricature(payload: CaricatureGenerationRequest):
         raise HTTPException(status_code=400, detail="photoBase64 es obligatorio")
 
     try:
-        print("1) Generando caricatura en Azure...")
+        print("1) Generando caricatura a través de LiteLLM...")
         caricatures_base64 = await asyncio.to_thread(
             call_image_generation_sync,
             payload.photoBase64,
@@ -942,14 +815,14 @@ async def generate_caricature(payload: CaricatureGenerationRequest):
         single_caricature_base64 = caricatures_base64[0]
         print(f"2) Caricatura generada. longitud base64={len(single_caricature_base64)}")
 
-        print("3) Guardando caricatura en Azure SQL...")
+        print("3) Guardando caricatura en PostgreSQL...")
         updated_ok = await asyncio.to_thread(
-            update_user_caricature_azure_sql,
+            update_user_caricature_postgres,
             order_number,
             single_caricature_base64,
         )
         if not updated_ok:
-            raise RuntimeError("No se pudo guardar la caricatura en Azure SQL")
+            raise RuntimeError("No se pudo guardar la caricatura en PostgreSQL")
 
         print(f"✅ Caricatura guardada en users id={order_number}")
         return {

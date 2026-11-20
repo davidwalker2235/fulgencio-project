@@ -152,9 +152,9 @@ variable "erni_agent_url" {
   sensitive   = true
 }
 
-# Imagen / caricaturas (Azure OpenAI gpt-image-2)
-variable "model_image_name" {
-  description = "Nombre del modelo de imagen Azure OpenAI"
+# Imagen / caricaturas (LiteLLM image alias)
+variable "litellm_image_model" {
+  description = "Nombre del modelo de imagen configurado en LiteLLM"
   type        = string
   default     = "gpt-image-2"
 }
@@ -166,49 +166,33 @@ variable "fulgencio_agent_url" {
   sensitive   = true
 }
 
-variable "azure_openai_image_api_key" {
-  description = "API Key de Azure OpenAI para imágenes"
+variable "litellm_image_api_base" {
+  description = "URL base HTTPS del LiteLLM Gateway para la API de imágenes"
   type        = string
-  sensitive   = true
+  default     = ""
 
   validation {
-    condition     = length(trimspace(var.azure_openai_image_api_key)) > 0
-    error_message = "azure_openai_image_api_key no puede estar vacía."
+    condition     = var.litellm_image_api_base == "" || can(regex("^https://", var.litellm_image_api_base))
+    error_message = "litellm_image_api_base debe ser una URL HTTPS."
   }
 }
 
-variable "azure_openai_image_api_version" {
-  description = "Versión de la API de imágenes de Azure Foundry"
+variable "litellm_image_api_key" {
+  description = "Virtual key de LiteLLM autorizada para el modelo de imagen"
   type        = string
-  default     = "preview"
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = length(trimspace(var.litellm_image_api_key)) > 0
+    error_message = "litellm_image_api_key no puede estar vacía."
+  }
 }
 
-variable "azure_openai_image_prompt" {
+variable "image_generation_prompt" {
   description = "Prompt para generación de caricaturas"
   type        = string
   default     = "Make an exaggerated caricature of the person appearing in this photo in a line drawing style. I want the details to be as minimalist as possible while preserving the exaggerated proportions. I want the teeth to appear as a single piece, meaning that the separation between the teeth should not be visible. Avoid grey colors, all lines must be black. The background should be white and empty, with no additional elements or distractions. The final image should be a clean and simple line drawing that captures the essence of the caricature in a minimalist way. This picture will be drawn by a robot arm so the lines should be connected together avoiding unnecessary gaps."
-}
-
-variable "azure_openai_image_endpoint" {
-  description = "Endpoint de generación de imágenes de Azure Foundry"
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.azure_openai_image_endpoint == "" || can(regex("^https://", var.azure_openai_image_endpoint))
-    error_message = "azure_openai_image_endpoint debe estar vacío o ser una URL HTTPS."
-  }
-}
-
-variable "azure_openai_image_edits_endpoint" {
-  description = "Endpoint de edición de imágenes de Azure Foundry (vacío = se deriva del endpoint de generación)"
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.azure_openai_image_edits_endpoint == "" || can(regex("^https://", var.azure_openai_image_edits_endpoint))
-    error_message = "azure_openai_image_edits_endpoint debe estar vacío o ser una URL HTTPS."
-  }
 }
 
 # Firebase (backend: status, robot_action, etc.)
@@ -225,34 +209,34 @@ variable "firebase_service_account_json" {
   default     = ""
 }
 
-# Azure SQL (backend: users y caricatura)
-variable "azure_sql_connection_string" {
-  description = "Connection string para Azure SQL Database (users)"
+# PostgreSQL (backend: users y caricatura)
+variable "database_url" {
+  description = "URL de conexión a PostgreSQL para users y caricaturas"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "azure_sql_connect_timeout_seconds" {
-  description = "Timeout (segundos) para conectar a Azure SQL desde backend"
+variable "postgres_connect_timeout_seconds" {
+  description = "Timeout (segundos) para conectar a PostgreSQL desde backend"
   type        = number
   default     = 60
 }
 
-variable "azure_sql_connect_retry_attempts" {
-  description = "Número de reintentos de conexión Azure SQL en errores transitorios"
+variable "postgres_connect_retry_attempts" {
+  description = "Número de reintentos de conexión PostgreSQL en errores transitorios"
   type        = number
   default     = 5
 }
 
-variable "azure_sql_connect_retry_base_seconds" {
-  description = "Base de backoff (segundos) para reintentos de conexión Azure SQL"
+variable "postgres_connect_retry_base_seconds" {
+  description = "Base de backoff (segundos) para reintentos de conexión PostgreSQL"
   type        = string
   default     = "1.0"
 }
 
-variable "azure_sql_connect_max_total_seconds" {
-  description = "Tiempo total máximo (segundos) destinado a reintentos de conexión Azure SQL"
+variable "postgres_connect_max_total_seconds" {
+  description = "Tiempo total máximo (segundos) destinado a reintentos de conexión PostgreSQL"
   type        = string
   default     = "45"
 }

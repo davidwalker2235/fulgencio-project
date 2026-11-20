@@ -1,6 +1,6 @@
 # GPT Realtime Voice Conversation Project
 
-This project enables real-time voice conversations with the GPT Realtime model deployed on Microsoft Foundry, featuring user authentication via Firebase Realtime Database.
+This project enables real-time voice conversations with the GPT Realtime model deployed on Microsoft Foundry, featuring user authentication via Firebase Realtime Database and PostgreSQL storage for users and caricatures.
 
 ## Project Structure
 
@@ -53,11 +53,9 @@ pip install -r requirements.txt
 - Create a `.env` file in the `back` folder with the following content:
 ```
 MODEL_NAME=gpt-realtime-1.5
-MODEL_IMAGE_NAME=gpt-image-2
-AZURE_OPENAI_IMAGE_API_KEY=your-foundry-image-key
-AZURE_OPENAI_IMAGE_ENDPOINT=https://your-resource.services.ai.azure.com/openai/v1/images/generations
-AZURE_OPENAI_IMAGE_EDITS_ENDPOINT=https://your-resource.services.ai.azure.com/openai/v1/images/edits
-AZURE_OPENAI_IMAGE_API_VERSION=preview
+LITELLM_IMAGE_API_BASE=https://your-litellm-gateway.example.com
+LITELLM_IMAGE_API_KEY=sk-your-image-virtual-key
+LITELLM_IMAGE_MODEL=gpt-image-2
 LITELLM_MASTER_KEY=sk-your-internal-proxy-key
 ```
 
@@ -166,7 +164,7 @@ The application includes a complete authentication system:
 ## Technical Details
 
 - Realtime uses LiteLLM Proxy with `gpt-realtime-1.5`.
-- Image edits call the Azure Foundry Images API directly with `gpt-image-2`.
+- Image edits use LiteLLM's OpenAI-compatible Images API with the `gpt-image-2` model alias.
 - Audio is processed in PCM16 format at 24kHz.
 - Transcription is performed using Whisper-1.
 - Authentication credentials are stored in Firebase Realtime Database.

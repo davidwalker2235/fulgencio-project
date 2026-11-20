@@ -50,53 +50,45 @@ class TestLiteLLMAdapters(unittest.TestCase):
         self.assertEqual(main.parse_generated_base64_list(response), ["first", "second"])
 
     @patch.object(main.httpx, "Client")
-    def test_image_edit_uses_foundry_directly_and_returns_base64(self, client_class):
+    def test_image_edit_uses_litellm_virtual_key_and_returns_base64(self, client_class):
         source = base64.b64encode(b"image-bytes").decode("ascii")
         response = MagicMock()
         response.json.return_value = {"data": [{"b64_json": "generated-image"}]}
         client = client_class.return_value.__enter__.return_value
         client.post.return_value = response
-        main.AZURE_OPENAI_IMAGE_ENDPOINT = (
-            "https://foundry.example/openai/v1/images/generations"
-        )
-        main.AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = (
-            "https://foundry.example/openai/v1/images/edits"
-        )
-        main.AZURE_OPENAI_IMAGE_API_KEY = "foundry-key"
-        main.AZURE_OPENAI_IMAGE_API_VERSION = "preview"
-        main.MODEL_IMAGE_NAME = "gpt-image-2"
+        main.LITELLM_IMAGE_API_BASE = "https://litellm.example"
+        main.LITELLM_IMAGE_API_KEY = "virtual-key"
+        main.LITELLM_IMAGE_MODEL = "gpt-image-2"
 
         result = main.call_image_generation_sync(source)
 
         self.assertEqual(result, ["generated-image"])
         args, kwargs = client.post.call_args
         self.assertEqual(
-            args[0], "https://foundry.example/openai/v1/images/edits"
+            args[0], "https://litellm.example/v1/images/edits"
         )
-        self.assertEqual(kwargs["headers"], {"api-key": "foundry-key"})
-        self.assertEqual(kwargs["params"], {"api-version": "preview"})
+        self.assertEqual(kwargs["headers"], {"Authorization": "Bearer virtual-key"})
+        self.assertNotIn("params", kwargs)
         self.assertEqual(kwargs["data"]["model"], "gpt-image-2")
         self.assertEqual(kwargs["files"]["image"][2], "image/jpeg")
         response.raise_for_status.assert_called_once_with()
 
     def test_image_edit_rejects_invalid_base64(self):
-        main.AZURE_OPENAI_IMAGE_ENDPOINT = ""
-        main.AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = (
-            "https://foundry.example/openai/v1/images/edits"
-        )
-        main.AZURE_OPENAI_IMAGE_API_KEY = "foundry-key"
+        main.LITELLM_IMAGE_API_BASE = "https://litellm.example"
+        main.LITELLM_IMAGE_API_KEY = "virtual-key"
         with self.assertRaisesRegex(RuntimeError, "Base64"):
             main.call_image_generation_sync("not-base64")
 
-    def test_image_edits_endpoint_is_derived_from_generation_endpoint(self):
-        main.AZURE_OPENAI_IMAGE_EDITS_ENDPOINT = ""
-        main.AZURE_OPENAI_IMAGE_ENDPOINT = (
-            "https://foundry.example/openai/v1/images/generations"
-        )
-
+    def test_litellm_image_endpoint_supports_base_url_with_or_without_v1(self):
+        main.LITELLM_IMAGE_API_BASE = "https://litellm.example/v1"
         self.assertEqual(
-            main.get_image_edits_endpoint(),
-            "https://foundry.example/openai/v1/images/edits",
+            main.get_litellm_image_edits_endpoint(),
+            "https://litellm.example/v1/images/edits",
+        )
+        main.LITELLM_IMAGE_API_BASE = "https://litellm.example"
+        self.assertEqual(
+            main.get_litellm_image_edits_endpoint(),
+            "https://litellm.example/v1/images/edits",
         )
 
     def test_realtime_connects_to_litellm_proxy(self):

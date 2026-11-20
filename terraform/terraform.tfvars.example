@@ -13,11 +13,9 @@ azure_openai_endpoint             = "https://tu-proxy-openai-compatible.example.
 azure_openai_api_key              = "sk-tu_api_key_aqui"
 azure_openai_api_version          = "2024-10-01-preview"
 model_name                        = "gpt-realtime-1.5"
-model_image_name                  = "gpt-image-2"
-azure_openai_image_api_key        = "tu_api_key_de_foundry"
-azure_openai_image_api_version    = "preview"
-azure_openai_image_endpoint       = "https://tu-recurso.services.ai.azure.com/openai/v1/images/generations"
-azure_openai_image_edits_endpoint = "https://tu-recurso.services.ai.azure.com/openai/v1/images/edits"
+litellm_image_model               = "gpt-image-2"
+litellm_image_api_base            = "https://tu-gateway-litellm.example.com"
+litellm_image_api_key             = "sk-tu-virtual-key"
 litellm_master_key                = "sk-cambia-esta-clave-interna"
 
 # CORS - Se actualizará automáticamente con el FQDN del frontend después del primer despliegue

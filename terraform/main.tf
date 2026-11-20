@@ -185,35 +185,23 @@ resource "azurerm_container_app" "backend" {
       }
 
       env {
-        name        = "AZURE_OPENAI_IMAGE_API_KEY"
-        secret_name = "azure-openai-image-api-key"
+        name  = "LITELLM_IMAGE_MODEL"
+        value = var.litellm_image_model
       }
 
       env {
-        name  = "MODEL_IMAGE_NAME"
-        value = var.model_image_name
+        name  = "LITELLM_IMAGE_API_BASE"
+        value = var.litellm_image_api_base
       }
 
       env {
-        name  = "AZURE_OPENAI_IMAGE_API_VERSION"
-        value = var.azure_openai_image_api_version
+        name        = "LITELLM_IMAGE_API_KEY"
+        secret_name = "litellm-image-api-key"
       }
 
       env {
-        name  = "AZURE_OPENAI_IMAGE_PROMPT"
-        value = var.azure_openai_image_prompt
-      }
-
-      env {
-        name  = "AZURE_OPENAI_IMAGE_ENDPOINT"
-        value = var.azure_openai_image_endpoint != "" ? var.azure_openai_image_endpoint : "${trimspace(trim(var.azure_openai_endpoint, "/"))}/openai/v1/images/generations"
-      }
-
-      env {
-        name = "AZURE_OPENAI_IMAGE_EDITS_ENDPOINT"
-        value = var.azure_openai_image_edits_endpoint != "" ? var.azure_openai_image_edits_endpoint : (
-          var.azure_openai_image_endpoint != "" ? replace(var.azure_openai_image_endpoint, "/images/generations", "/images/edits") : "${trimspace(trim(var.azure_openai_endpoint, "/"))}/openai/v1/images/edits"
-        )
+        name  = "IMAGE_GENERATION_PROMPT"
+        value = var.image_generation_prompt
       }
 
       env {
@@ -227,28 +215,28 @@ resource "azurerm_container_app" "backend" {
       }
 
       env {
-        name        = "AZURE_SQL_CONNECTION_STRING"
-        secret_name = "azure-sql-connection-string"
+        name        = "DATABASE_URL"
+        secret_name = "postgres-database-url"
       }
 
       env {
-        name  = "AZURE_SQL_CONNECT_TIMEOUT_SECONDS"
-        value = tostring(var.azure_sql_connect_timeout_seconds)
+        name  = "POSTGRES_CONNECT_TIMEOUT_SECONDS"
+        value = tostring(var.postgres_connect_timeout_seconds)
       }
 
       env {
-        name  = "AZURE_SQL_CONNECT_RETRY_ATTEMPTS"
-        value = tostring(var.azure_sql_connect_retry_attempts)
+        name  = "POSTGRES_CONNECT_RETRY_ATTEMPTS"
+        value = tostring(var.postgres_connect_retry_attempts)
       }
 
       env {
-        name  = "AZURE_SQL_CONNECT_RETRY_BASE_SECONDS"
-        value = var.azure_sql_connect_retry_base_seconds
+        name  = "POSTGRES_CONNECT_RETRY_BASE_SECONDS"
+        value = var.postgres_connect_retry_base_seconds
       }
 
       env {
-        name  = "AZURE_SQL_CONNECT_MAX_TOTAL_SECONDS"
-        value = var.azure_sql_connect_max_total_seconds
+        name  = "POSTGRES_CONNECT_MAX_TOTAL_SECONDS"
+        value = var.postgres_connect_max_total_seconds
       }
 
       startup_probe {
@@ -369,8 +357,8 @@ resource "azurerm_container_app" "backend" {
   }
 
   secret {
-    name  = "azure-openai-image-api-key"
-    value = var.azure_openai_image_api_key
+    name  = "litellm-image-api-key"
+    value = var.litellm_image_api_key
   }
 
   secret {
@@ -400,8 +388,8 @@ resource "azurerm_container_app" "backend" {
   }
 
   secret {
-    name  = "azure-sql-connection-string"
-    value = var.azure_sql_connection_string
+    name  = "postgres-database-url"
+    value = var.database_url
   }
 
   tags = var.tags

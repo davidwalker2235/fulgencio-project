@@ -37,7 +37,7 @@ def ensure_backend_venv_python() -> None:
 ensure_backend_venv_python()
 
 try:
-    import pyodbc
+    import psycopg
     from dotenv import load_dotenv
     from PIL import Image
 except ModuleNotFoundError as exc:
@@ -55,106 +55,36 @@ def load_environment() -> None:
     load_dotenv(BACK_ENV_PATH)
 
 
-def get_sql_server_driver_name() -> Optional[str]:
-    candidates = [
-        "ODBC Driver 18 for SQL Server",
-        "ODBC Driver 17 for SQL Server",
-        "ODBC Driver 13 for SQL Server",
-        "SQL Server",
-    ]
-    installed = pyodbc.drivers()
-    for name in candidates:
-        if name in installed:
-            return name
-    return None
+def get_database_url() -> str:
+    url = os.getenv("DATABASE_URL", "").strip().strip('"').strip("'")
+    if not url:
+        raise RuntimeError("DATABASE_URL no esta configurado en back/.env")
+    return url
 
 
-def normalize_odbc_connection_string(raw: str) -> str:
-    normalized = raw
-    normalized = normalized.replace("Encrypt=True", "Encrypt=yes").replace("Encrypt=False", "Encrypt=no")
-    normalized = normalized.replace(
-        "TrustServerCertificate=True",
-        "TrustServerCertificate=yes",
-    ).replace(
-        "TrustServerCertificate=False",
-        "TrustServerCertificate=no",
-    )
-    if "Initial Catalog=" in normalized and "DATABASE=" not in normalized.upper():
-        normalized = normalized.replace("Initial Catalog=", "Database=")
-    if "MultipleActiveResultSets=True" in normalized:
-        normalized = normalized.replace("MultipleActiveResultSets=True", "MARS_Connection=yes")
-    if "MultipleActiveResultSets=False" in normalized:
-        normalized = normalized.replace("MultipleActiveResultSets=False", "MARS_Connection=no")
-    normalized = normalized.replace("Persist Security Info=False;", "")
-    normalized = normalized.replace("Persist Security Info=True;", "")
-    if "User ID=" in normalized and "UID=" not in normalized.upper():
-        normalized = normalized.replace("User ID=", "UID=")
-    if "Password=" in normalized and "PWD=" not in normalized.upper():
-        normalized = normalized.replace("Password=", "PWD=")
-    return normalized
-
-
-def adapt_connection_string_for_driver(raw: str, driver: str) -> str:
-    if driver != "SQL Server":
-        return raw
-
-    adapted = raw
-    adapted = adapted.replace("MARS_Connection=yes", "")
-    adapted = adapted.replace("MARS_Connection=no", "")
-    adapted = adapted.replace("TrustServerCertificate=yes", "")
-    adapted = adapted.replace("TrustServerCertificate=no", "")
-    adapted = adapted.replace(";;", ";")
-    return adapted
-
-
-def get_azure_sql_connection_string() -> str:
-    raw = os.getenv("AZURE_SQL_CONNECTION_STRING", "").strip()
-    if not raw:
-        raise RuntimeError("AZURE_SQL_CONNECTION_STRING no esta configurado en back/.env")
-    if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
-        raw = raw[1:-1]
-    raw = normalize_odbc_connection_string(raw)
-    if "Driver=" in raw or "DRIVER=" in raw:
-        return raw
-    driver = get_sql_server_driver_name() or "ODBC Driver 18 for SQL Server"
-    raw = adapt_connection_string_for_driver(raw, driver)
-    return f"Driver={{{driver}}};{raw}"
-
-
-def is_transient_sql_error(exc: Exception) -> bool:
+def is_transient_postgres_error(exc: Exception) -> bool:
     message = str(exc).lower()
-    transient_markers = (
-        "40613",
-        "40197",
-        "40501",
-        "49918",
-        "49919",
-        "49920",
-        "10928",
-        "10929",
-        "timeout",
-        "timed out",
-        "service is currently busy",
-        "not currently available",
-    )
+    transient_markers = ("connection refused", "connection reset", "could not connect",
+                         "server closed the connection", "timeout", "timed out",
+                         "temporarily unavailable", "too many connections")
     return any(marker in message for marker in transient_markers)
 
 
 @contextlib.contextmanager
 def open_connection():
-    connection_string = get_azure_sql_connection_string()
+    database_url = get_database_url()
     last_error = None
 
     for attempt in range(1, 6):
         try:
-            connection = pyodbc.connect(connection_string, timeout=60)
+            connection = psycopg.connect(database_url, connect_timeout=60)
             break
-        except pyodbc.Error as exc:
+        except psycopg.OperationalError as exc:
             last_error = exc
-            if not is_transient_sql_error(exc) or attempt == 5:
+            if not is_transient_postgres_error(exc) or attempt == 5:
                 raise
             wait_seconds = min(8.0, (2 ** (attempt - 1)) + random.uniform(0.0, 0.5))
-            print(f"[WARN] Azure SQL no disponible en el intento {attempt}/5. Reintentando en {wait_seconds:.1f}s...")
+            print(f"[WARN] PostgreSQL no disponible en el intento {attempt}/5. Reintentando en {wait_seconds:.1f}s...")
             time.sleep(wait_seconds)
     else:
         raise last_error  # pragma: no cover
@@ -181,19 +111,19 @@ def save_as_jpeg(image_bytes: bytes, target_path: Path) -> None:
 
 
 def build_users_query(limit: Optional[int] = None) -> str:
-    base_query = "SELECT id, caricature FROM users WHERE caricature IS NOT NULL AND LTRIM(RTRIM(caricature)) <> ''"
+    base_query = "SELECT id, caricature FROM users WHERE caricature IS NOT NULL AND BTRIM(caricature) <> ''"
     if limit is None:
         return base_query
-    return f"SELECT TOP {int(limit)} id, caricature FROM users WHERE caricature IS NOT NULL AND LTRIM(RTRIM(caricature)) <> ''"
+    return f"SELECT id, caricature FROM users WHERE caricature IS NOT NULL AND BTRIM(caricature) <> '' ORDER BY id LIMIT {int(limit)}"
 
 
 def count_users_with_caricature(connection, limit: Optional[int] = None) -> int:
     if limit is None:
-        query = "SELECT COUNT(*) FROM users WHERE caricature IS NOT NULL AND LTRIM(RTRIM(caricature)) <> ''"
+        query = "SELECT COUNT(*) FROM users WHERE caricature IS NOT NULL AND BTRIM(caricature) <> ''"
     else:
         query = (
             "SELECT COUNT(*) FROM ("
-            f"SELECT TOP {int(limit)} id FROM users WHERE caricature IS NOT NULL AND LTRIM(RTRIM(caricature)) <> ''"
+            f"SELECT id FROM users WHERE caricature IS NOT NULL AND BTRIM(caricature) <> '' ORDER BY id LIMIT {int(limit)}"
             ") AS limited_users"
         )
 
@@ -237,8 +167,8 @@ def export_caricatures(limit: Optional[int] = None) -> tuple[int, int]:
         cursor.execute(query)
 
         for row in cursor:
-            user_id = str(row.id).strip()
-            caricature_value = row.caricature
+            user_id = str(row[0]).strip()
+            caricature_value = row[1]
             processed += 1
 
             if not user_id or not caricature_value:
@@ -265,7 +195,7 @@ def export_caricatures(limit: Optional[int] = None) -> tuple[int, int]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Descarga las caricaturas base64 de Azure SQL y las guarda como JPG en la carpeta caricatures.",
+        description="Descarga las caricaturas base64 de PostgreSQL y las guarda como JPG en la carpeta caricatures.",
     )
     parser.add_argument(
         "--limit",

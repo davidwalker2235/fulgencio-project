@@ -11,22 +11,22 @@ La aplicación está dividida en `front/` (Next.js, React y TypeScript), `back/`
 1. `/login` lee `credentials` de Firebase Realtime Database y valida las credenciales.
 2. La autenticación se conserva en `localStorage` mediante `useAuth.ts`.
 3. Las páginas `/photo/form`, `/photo/capture` y `/photo/code` recopilan datos, foto y número de usuario.
-4. `POST /photo/register` registra el usuario en la tabla `users` de Azure SQL y devuelve `orderNumber`.
-5. `POST /photo/generate-caricature` envía la foto directamente al endpoint de edición de `gpt-image-2` en Azure Foundry y guarda la imagen base64 en Azure SQL.
-6. `POST /robot/submit-number` comprueba que el robot esté libre, busca el usuario en Azure SQL y publica `robot_action` en Firebase.
+4. `POST /photo/register` registra el usuario en la tabla `users` de PostgreSQL y devuelve `orderNumber`.
+5. `POST /photo/generate-caricature` envía la foto al endpoint de edición de imágenes de LiteLLM usando una virtual key para `gpt-image-2` y guarda la imagen base64 en PostgreSQL.
+6. `POST /robot/submit-number` comprueba que el robot esté libre, busca el usuario en PostgreSQL y publica `robot_action` en Firebase.
 7. El robot consume `robot_action` y actualiza `status`. El backend escucha ese nodo y reenvía cambios por WebSocket como `firebase.status.changed`.
 8. La conversación de voz se ejecuta por `WS /ws` mientras el robot trabaja. `useVoiceConversation.ts` gestiona audio, transcripción, estado y suscripciones Firebase.
 
 ## Firebase Realtime Database
 
-Firebase se usa para autenticación y coordinación, no como base principal de usuarios.
+PostgreSQL almacena los usuarios y caricaturas. Firebase se usa para autenticación y coordinación.
 
 - `credentials`: credenciales simples usadas por el login.
 - `status`: estado del robot; normalmente `idle` cuando está libre.
 - `robot_action`: orden de dibujo publicada por el backend.
 - `currentUser`: información temporal del usuario activo.
 
-La ruta `users/{userId}` no debe usarse para guardar resúmenes, fotos ni datos de usuario. Los datos de usuario y caricaturas se almacenan en Azure SQL. Al detener una conversación se limpian `currentUser` y `robot_action`.
+La ruta `users/{userId}` no debe usarse para guardar resúmenes, fotos ni datos de usuario. Los datos de usuario y caricaturas se almacenan en PostgreSQL. Al detener una conversación se limpian `currentUser` y `robot_action`.
 
 La configuración del frontend está en `front/firebaseConfig.ts`. El backend usa Firebase Admin SDK, `FIREBASE_DATABASE_URL` y `FIREBASE_SERVICE_ACCOUNT_JSON`.
 
@@ -36,12 +36,12 @@ Endpoints principales:
 
 - `GET /` y `GET /health`: comprobaciones básicas.
 - `POST /transcriptions/summarize`: genera un resumen mediante GPT Realtime; no lo almacena en Firebase.
-- `POST /photo/register`: registra datos en Azure SQL.
-- `POST /photo/generate-caricature`: genera y guarda la caricatura en Azure SQL.
-- `POST /robot/submit-number`: valida estado, consulta SQL y publica `robot_action`.
+- `POST /photo/register`: registra datos en PostgreSQL.
+- `POST /photo/generate-caricature`: genera y guarda la caricatura en PostgreSQL.
+- `POST /robot/submit-number`: valida estado, consulta PostgreSQL y publica `robot_action`.
 - `WS /ws`: canal de conversación de voz.
 
-La conexión SQL incorpora normalización, reintentos y detección de errores transitorios. La tabla `users` contiene, entre otros, `id`, `full_name`, `email`, `real_name`, `work_name`, `request_id`, `caricature` y `caricature_timestamp`.
+La conexión PostgreSQL usa `DATABASE_URL`, reintentos y detección de errores transitorios. La tabla `users` se crea al iniciar el backend y contiene `id`, `full_name`, `email`, `timestamp`, `real_name`, `work_name`, `request_id`, `caricature` y `caricature_timestamp`.
 
 El backend puede usar agentes Azure Realtime, Erni o `fulgencio_agent`, según `VOICE_AGENT_TYPE`. Para agentes externos funciona como proxy WebSocket, reenviando audio y eventos.
 
@@ -98,11 +98,11 @@ npm run dev
 
 Producción local: `docker compose up --build`. El backend escucha en 8000; el frontend se publica en 8080 y resuelve dinámicamente el hostname del backend para WebSocket.
 
-Variables importantes: `MODEL_NAME`, `MODEL_IMAGE_NAME`, `VOICE_AGENT_TYPE`, URL del agente externo, `AZURE_OPENAI_IMAGE_ENDPOINT`, `AZURE_OPENAI_IMAGE_EDITS_ENDPOINT`, `AZURE_OPENAI_IMAGE_API_KEY`, credenciales Firebase y `AZURE_SQL_CONNECTION_STRING`. No guardar secretos en el repositorio.
+Variables importantes: `MODEL_NAME`, `LITELLM_IMAGE_API_BASE`, `LITELLM_IMAGE_API_KEY`, `VOICE_AGENT_TYPE`, URL del agente externo, credenciales Firebase y `DATABASE_URL`. No guardar secretos en el repositorio.
 
 ## Reglas para cambios
 
-- Distinguir siempre entre `users` de Azure SQL y el nodo `users` de Firebase; el segundo está fuera del diseño actual.
+- Distinguir siempre entre la tabla `users` de PostgreSQL y el nodo `users` de Firebase; el segundo está fuera del diseño actual.
 - Antes de cambiar un timeout, identificar si pertenece a SQL, generación de imágenes, GPT Realtime, proxy WebSocket o lógica del robot.
 - Mantener los formatos de eventos Firebase y WebSocket salvo que se actualicen ambos extremos.
 - Los mensajes dirigidos al usuario deben ser naturales y no exponer errores internos cuando exista un estado recuperable.
